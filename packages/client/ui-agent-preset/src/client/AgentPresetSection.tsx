@@ -34,7 +34,7 @@ export interface AgentPresetSectionInjected {
   /** Close the read-only viewer. */
   closeView: () => void
   /** Open the copy dialog over one preset. */
-  beginCopy: (from: string) => void
+  beginCopy: (from: string, description?: string) => void
   /** Close the copy dialog, discarding the draft. */
   cancelCopy: () => void
   /** Name the preset the copy creates. */
@@ -352,7 +352,7 @@ export function AgentPresetSection(props: AgentPresetSectionProps): ReactNode {
                           ? t('brokenNoCopy')
                           : state.authorable ? t('duplicate') : t('duplicateUnavailable')}
                         aria-label={`${t('duplicate')}: ${text.name}`}
-                        onClick={() => { props.beginCopy(row.id) }}
+                        onClick={() => { props.beginCopy(row.id, text.description) }}
                       >
                         <IconCopyOutline16 />
                       </button>

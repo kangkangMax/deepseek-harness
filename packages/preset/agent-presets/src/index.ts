@@ -534,10 +534,11 @@ export class AgentPresets extends TypertRemoteService {
    * primary source, so any trust is accepted.
    * @param id - the new preset's id, which becomes its directory name.
    * @param name - display name for the copy; absent falls back to the id.
+   * @param description - localized description for the copy, when supplied.
    * @throws when the source is unknown, the id is unusable or already taken,
    * or the deployment configures no writable root.
    */
-  async copy(from: string, id: string, name?: string): Promise<void> {
+  async copy(from: string, id: string, name?: string, description?: string): Promise<void> {
     const source = await this.resolve(from)
     // The roster check refuses ids any root supplies — shipped ones included,
     // since a user directory named like a shipped preset is shadowed by it.
@@ -545,7 +546,7 @@ export class AgentPresets extends TypertRemoteService {
     if ((await this.list()).some(preset => preset.id === id)) {
       throw presetExists(id)
     }
-    await copyComposition(this.resolvedRoots, source, id, name)
+    await copyComposition(this.resolvedRoots, source, id, name, description)
     // A settled mount under this id can only be stale (its preset was deleted
     // from disk outside `remove`); the new preset must not inherit it. Every
     // session already joined keeps the generation it runs on regardless.
@@ -557,15 +558,16 @@ export class AgentPresets extends TypertRemoteService {
    * @param from - the source preset id.
    * @param id - the new preset id.
    * @param name - the copy's optional display name.
+   * @param description - localized description for the copy, when supplied.
    * @returns once the copy is stored.
    * @throws {RemoteError} with the corresponding stable preset code and
    * details when the copy is refused.
    */
   @Remote('copy')
-  async remoteExportCopy(from: string, id: string, name?: string): Promise<void> {
+  async remoteExportCopy(from: string, id: string, name?: string, description?: string): Promise<void> {
     validatePresetId(from, 'from')
     validatePresetId(id, 'agentPreset')
-    await this.copy(from, id, name)
+    await this.copy(from, id, name, description)
   }
 
   /**

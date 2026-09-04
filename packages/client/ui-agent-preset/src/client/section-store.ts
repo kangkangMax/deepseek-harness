@@ -4,7 +4,7 @@
  * compositions.
  *
  * The browser edits no composition text. A new preset is a host-side copy of
- * an existing one (`{ from, id, name? }` is all that crosses the wire), and
+ * an existing one (`{ from, id, name?, description? }` is all that crosses the wire), and
  * everything after creation happens in the preset's own files — which is why
  * the page's other job is getting the user TO those files: open the directory
  * where the host has a desktop, show its path where it does not.
@@ -54,6 +54,8 @@ export interface CopyDraft {
   id: string
   /** Display name being typed; empty falls back to the id. */
   name: string
+  /** Description resolved in the active UI locale at copy time. */
+  description?: string
   /** Whether the copy is in flight. */
   saving: boolean
   /** The last copy failure, cleared by the next edit. */
@@ -221,11 +223,19 @@ export class AgentPresetSectionController {
    * Open the copy dialog over one preset.
    * @param from - the preset the copy will start from.
    */
-  beginCopy(from: string): void {
+  beginCopy(from: string, description?: string): void {
     const row = this.store.getSnapshot().rows.find(candidate => candidate.id === from)
     this.set({
       error: null,
-      copy: { from, fromTitle: row?.name ?? from, id: '', name: '', saving: false, error: null },
+      copy: {
+        from,
+        fromTitle: row?.name ?? from,
+        id: '',
+        name: '',
+        ...description === undefined ? {} : { description },
+        saving: false,
+        error: null,
+      },
     })
   }
 
@@ -262,12 +272,13 @@ export class AgentPresetSectionController {
     if (draftBlocker(draft, this.store.getSnapshot().rows) !== undefined) return
     this.patchCopy({ saving: true, error: null })
     const name = draft.name.trim()
+    const description = draft.description?.trim()
     // Every declared parameter is passed even when optional: the Remote face
     // checks arity against the declaration and rejects a short call. An
     // empty display name goes as `undefined` — absent rather than empty, so
     // the host falls back to the id instead of labelling the row with ''.
     const result = await this.ctx.remote.agentPresets.copy(
-      draft.from, draft.id, name === '' ? undefined : name)
+      draft.from, draft.id, name === '' ? undefined : name, description === '' ? undefined : description)
     if (!result.ok) {
       this.patchCopy({ saving: false, error: result.error.message })
       return

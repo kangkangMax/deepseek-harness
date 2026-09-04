@@ -250,7 +250,7 @@ describe('the preset list', () => {
 
     expect(actions.makeDefault).toHaveBeenCalledWith('mine')
     expect(actions.openLocation).toHaveBeenCalledWith('mine')
-    expect(actions.beginCopy).toHaveBeenCalledWith('mine')
+    expect(actions.beginCopy).toHaveBeenCalledWith('mine', undefined)
     expect(actions.view).toHaveBeenCalledWith('standard')
   })
 
