@@ -112,6 +112,21 @@ describe('copying a preset', () => {
       .toMatchObject({ description: '只做检索。' })
   })
 
+  it('uses the supplied localized description when copying a preset', async () => {
+    await seedPreset(userRoot, 'source', { metadata: 'description: 中文描述。\n' })
+
+    await copyComposition(
+      [{ path: userRoot, trust: 'user' }],
+      await ctx.agentPresets.resolve('source'),
+      'mine',
+      undefined,
+      'English description.',
+    )
+
+    const metadata = await readFile(join(userRoot, 'mine', METADATA_FILE), 'utf8')
+    expect(metadata).toContain('description: English description.')
+  })
+
   it('stores the display name the author supplied', async () => {
     await ctx.agentPresets.copy('standard', 'mine', '我的模式')
 

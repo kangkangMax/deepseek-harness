@@ -179,7 +179,7 @@ export function apply(ctx: ClientContext): void {
     load: () => section.load(),
     view: (id: string) => section.view(id),
     closeView: () => { section.closeView() },
-    beginCopy: (from: string) => { section.beginCopy(from) },
+    beginCopy: (from: string, description?: string) => { section.beginCopy(from, description) },
     cancelCopy: () => { section.cancelCopy() },
     setCopyId: (id: string) => { section.setCopyId(id) },
     setCopyName: (name: string) => { section.setCopyName(name) },

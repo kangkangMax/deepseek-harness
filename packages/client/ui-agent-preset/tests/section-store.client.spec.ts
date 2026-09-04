@@ -88,12 +88,12 @@ function fakeCtx(
         // Arity is checked against the declaration, not against which arguments
         // carry a value, so a short call rejects instead of answering. Reject
         // one here too: the real face would, and a lenient double hid it once.
-        copy: (...args: [from: string, id: string, name?: string]) => {
-          if (args.length !== 3) {
-            return Promise.reject(new Error(`client api: agentPresets/copy expected 3 argument(s), got ${String(args.length)}`))
+        copy: (...args: [from: string, id: string, name?: string, description?: string]) => {
+          if (args.length !== 4) {
+            return Promise.reject(new Error(`client api: agentPresets/copy expected 4 argument(s), got ${String(args.length)}`))
           }
-          const [from, id, name] = args
-          record('copy', { from, id, ...name === undefined ? {} : { name } })
+          const [from, id, name, description] = args
+          record('copy', { from, id, ...name === undefined ? {} : { name }, ...description === undefined ? {} : { description } })
           if (options.failCopy !== undefined) return remoteFail(options.failCopy)
           const source = presets.get(from)
           /* v8 ignore next -- every test copies a source the fake store holds */
@@ -102,6 +102,7 @@ function fakeCtx(
             trust: 'user',
             content: source.content,
             ...name === undefined ? {} : { name },
+            ...description === undefined ? {} : { description },
           })
           return remoteOk(undefined)
         },
@@ -344,7 +345,7 @@ describe('submitting a copy', () => {
   it('copies, re-reads the roster, announces the change, and opens the files', async () => {
     const { controller, calls, rosterChanges } = harness()
     await controller.load()
-    controller.beginCopy('standard')
+    controller.beginCopy('standard', 'English description.')
     controller.setCopyId('my-copy')
     controller.setCopyName('我的模式')
 
@@ -355,7 +356,7 @@ describe('submitting a copy', () => {
     expect(state.rows.map(row => row.id)).toContain('my-copy')
     expect(rosterChanges()).toBe(1)
     expect(calls.find(call => call.method === 'copy')?.payload)
-      .toEqual({ from: 'standard', id: 'my-copy', name: '我的模式' })
+      .toEqual({ from: 'standard', id: 'my-copy', name: '我的模式', description: 'English description.' })
     // A preset is its files from here on, so landing in them completes the
     // copy rather than following it.
     expect(calls.find(call => call.method === 'openAgentPresetDirectory')?.payload)
