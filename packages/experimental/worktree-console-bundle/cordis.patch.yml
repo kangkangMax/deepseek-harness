@@ -1,0 +1,9 @@
+# Composes the worktree management Host controller with the browser half that
+# renders it. Both rows insert at the bundle's own layer: the Host service is
+# inert until the client asks it something, and the client half registers its
+# Plugins-page section itself.
+- insert:
+    - id: worktree-console
+      name: '@deepseek-ai/dsh-experimental-worktree-console'
+    - id: ui-worktree-console
+      name: '@deepseek-ai/dsh-experimental-client-ui-worktree-console'
