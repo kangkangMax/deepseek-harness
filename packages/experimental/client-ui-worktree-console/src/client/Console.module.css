@@ -1,0 +1,149 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hint {
+  margin: 0;
+  color: var(--dsh-color-text-secondary);
+  font-size: 12px;
+}
+
+.notice {
+  margin: 0;
+  color: var(--dsh-color-text-secondary);
+  font-size: 12px;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.repositoryList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.repositoryButton {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.repositoryButton:hover {
+  background: var(--dsh-color-surface-hover);
+}
+
+.repositoryButton[aria-current='true'] {
+  background: var(--dsh-color-surface-selected);
+}
+
+.repositoryName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repositoryCount {
+  color: var(--dsh-color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.table th,
+.table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--dsh-color-border-subtle);
+  text-align: left;
+  vertical-align: top;
+}
+
+.table th {
+  color: var(--dsh-color-text-secondary);
+  font-weight: 500;
+}
+
+.path {
+  overflow-wrap: anywhere;
+  font-family: var(--dsh-font-mono);
+}
+
+.commit {
+  font-family: var(--dsh-font-mono);
+}
+
+.badges {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.files {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-family: var(--dsh-font-mono);
+  overflow-wrap: anywhere;
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--dsh-color-border-subtle);
+  border-radius: 6px;
+  background: var(--dsh-color-surface-subtle);
+}
+
+.confirmActions {
+  display: flex;
+  gap: 8px;
+}
