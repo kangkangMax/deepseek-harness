@@ -13,11 +13,11 @@ execution: code
 
 ## Goal Capsule
 
-- **Objective:** 给 DeepSeek Harness 补上 worktree 的三个缺口——(A) 一个能看到并手动清理全部 worktree 的管理页；(B) composer 里的一个 Worktree 开关，让空白会话能一键在自动创建的 worktree 里开工；(C) 给沙箱策略加上「受控的额外可写根」，让 worktree 会话在保留写围栏的前提下自行提交。
+- **Objective:** 给 DeepSeek Harness 补上 worktree 的两个缺口——(A) 一个能看到并手动清理全部 worktree 的管理页；(B) composer 里的一个 Worktree 开关，让空白会话能一键在自动创建的 worktree 里开工，并在该隔离会话里直接提交。
 - **Product authority:** 用户本人——dsh 的重度使用者，同时维护多个仓库与多个 worktree 插件，需要并行推进多个独立需求并各自独立提交、独立测试。单人工具，没有第二类使用者。
-- **Delivery shape:** 三个特性都做在 dsh 仓库内：A 与 B 落在实验性可选 bundle 里（复用官方构建链，A 挂插件详情页、B 挂 composer）；C 落在沙箱策略面。
+- **Delivery shape:** 两个特性都做在 dsh 仓库内的实验性可选 bundle 里，复用官方构建链；A 挂在插件详情页，B 挂在 composer。B 不新建会话、不放宽权限模式，只把会话的**当前工作目录**指向 worktree（唯一的例外是 U7 会改核心包 `ui-conversation` 的 slot 契约）。
 - **Open blockers:** 无。
-- **Readiness note:** 特性 A 已到 implementation-ready（含 Planning Contract 与 6 个实施单元）；**特性 B 与 C 目前只有需求，尚未规划**。
+- **Readiness note:** 特性 A 已到 implementation-ready（含 Planning Contract 与 6 个实施单元，U1–U6）；**特性 B 已补齐规划**（U7–U9），核心结论是「不换会话、不动权限」。
 
 ---
 
@@ -28,10 +28,9 @@ execution: code
 本 Product Contract 覆盖两个特性：
 
 - **特性 A — Worktree 管理页**：Requirements `R1`–`R12`，Acceptance Examples `AE1`–`AE4`；已完成规划。
-- **特性 B — Composer Worktree 开关**：Requirements `R13`–`R19`，Acceptance Examples `AE5`–`AE8`；仅需求，尚未规划。
-- **特性 C — 受控的额外可写根**：Requirements `R20`–`R25`，Acceptance Examples `AE9`–`AE12`；仅需求，尚未规划。它独立于 B，落地后取代 B 的提交路径（B 的 `R19` 与升级批准通道随之退役）。
+- **特性 B — Composer Worktree 开关**：Requirements `R13`–`R18`，Acceptance Examples `AE5`–`AE8`；已规划（实施单元 `U7`–`U9`）。
 
-下面第一节到 `### Sources / Research` 属特性 A；`### 特性 B：Composer Worktree 开关` 与 `### 特性 C：受控的额外可写根` 分属 B 与 C。
+下面第一节到 `### Sources / Research` 属特性 A；`### 特性 B：Composer Worktree 开关` 起属特性 B。
 
 ### Summary
 
@@ -185,202 +184,120 @@ flowchart TB
 
 #### Summary
 
-在 composer 里给**空白会话**加一个 Worktree 开关：勾选并发出首条 prompt 时，先物化 worktree，再让会话以该目录为 cwd 出生；composer 上常驻一个只读徽章，只表明「当前会话在 worktree 里」。
+在 composer 里给**空白会话**加一个 Worktree 开关：勾选并发出首条 prompt 时先物化 worktree，再把该会话的**当前工作目录**指到它；composer 上常驻一个只读徽章，表明本会话的工作树是哪一个。会话本身不更换，权限模式也不动。
 
 #### Problem Frame
 
-用户要在同一台机器上并行推进多个独立需求，每个需求各自独立提交、独立测试。今天的做法要么每次手动开目录，要么依赖第三方插件的「新会话勾选」——都没有把「勾选 → 自动建出隔离目录 → 用该目录开会话」压成一步。
+用户要在同一台机器上并行推进多个独立需求，每个需求各自独立提交、独立测试。今天的做法要么每次手动开目录，要么依赖第三方插件的「新会话勾选」——都没有把「勾选 → 自动建出隔离目录 → 直接在该目录里干活」压成一步。
 
-同时有一条硬约束必须由产品语义吸收，而不是留给用户去撞：**dsh 的会话 cwd 在创建时写入后不可变**，对已有会话使用不同 cwd 会抛 `ApiSessionCwdConflict`。因此「在一个已经聊起来的会话里换到 worktree」在技术上不可能。
+这里有一个容易误判的技术前提，值得写清：**会话有两层目录概念**——出生时冻结、不可变的 `header.cwd`，以及可变的「当前工作目录」（由工作目录服务记录、可回放、当前目录消失时回落到原始项目）。**沙箱写围栏取的是前者**，而后者正是工作树该去的地方。把这两者混为一谈，就会得出「换目录必须新建会话」以及「在 worktree 里提交必须放宽权限」这两个错误结论。
 
 #### Key Decisions
 
-**开关只在空白会话生效。** 对齐「在会话存在之前决定它的出生地」这一语义；已产生消息的会话里开关不可用，用户需另开一个。理由：cwd 不可变，而替换一个进行中的对话会丢掉上下文。
+**开关只在空白会话生效，理由是任务边界。** 中途开工作树会让之前在检出里做的改动混进来，「隔离一个任务」就不干净了。这是产品选择，不是技术限制——当前工作目录本来就可以随时改。
 
-**发送时才物化，原空白会话被替换。** 用户看到的是同一个空白界面变成新会话，实际发生的是「先物化 worktree → 再以该 cwd 创建会话」。理由：只有「会话存在的时刻晚于 worktree 物化的时刻」，cwd 才是对的。
+**不换会话，只改「当前工作目录」。** 物化完成后用工作目录服务把该会话的当前目录指向工作树；会话身份、权限模式、对话上下文全部不变。理由：`header.cwd` 本就不需要变；换会话会丢掉对话上下文，还要额外处理旧会话的去处。
 
-**兑现后勾选态自动归位，隔离态由常驻徽章承担。** 开关不是模式。理由：若照抄 plan / permission 那种可反复开关的模式语义，用户会以为关掉开关能回主仓，而会话其实已经在 worktree 分支上。
+**落点用官方默认，即在检出根内。** `<检出根>/.agents/worktrees/<名字>`。理由有两条且互相加强：一是官方服务的 `directory` 被硬校验为「相对且不含点段」，出不了检出根；二是检出根内的落点让**围栏根（= `header.cwd` = 检出根）同时罩住工作树与 `.git`**，于是标准模式就够用，不需要放宽任何权限。
 
-**失败 fail-closed。** 准备序列任一步失败即拒绝开跑并报错，绝不静默回落到主仓 cwd。理由：静默回落会产出「以为在隔离、实际在改主仓」的会话，其代价高于任何一次显式失败。
+**兑现后勾选态自动归位，状态由常驻徽章承担。** 开关不是模式。理由：若照抄 plan / permission 那种可反复开关的模式语义，用户会以为关掉开关就能回主仓，而会话的当前目录其实已经指向工作树。
 
-**提交默认会被围栏拒绝，但有一条既有的「一次批准升级」通道。** 写围栏根是会话自己的 cwd，可写范围只有 `[会话 cwd, /tmp, tmpdir()]`；而 worktree 与原仓库**共享 `<主仓>/.git`**，它在围栏之外。因此 worktree 会话里第一次执行写 Git 元数据的命令会被拒（`[sandbox: file access denied under workspace-write mode]`）。但 harness 自带升级通道：变更类工具可携带 `sandbox_permissions` + `justification` 两个参数，经用户批准后以 `danger-full-access` 重跑该次执行——这条路已在 `packages/sandbox/sandbox/src/escalation.ts` 定义（`workspace-write → danger-full-access`），所以「提交 / 推送 / 建 PR」在对话里是可行的，代价是每次都要一次批准。宿主侧提交动作（下条 R19）是把这个代价消掉的可选增强，不是前置条件。**本特性的最终形态是把这一层交给特性 C 的受控额外可写根**——C 落地后会话自己即可提交，既不用批准也不放弃围栏，R19 与升级批准通道一并退役。
+**失败 fail-closed。** 物化失败即拒绝开跑并报错，绝不静默回落到原目录。理由：静默回落会产出「以为在隔离、实际在改检出」的会话，其代价高于任何一次显式失败。
+
+**不动权限模式。** 提交要写的 `.git` 与工作树本身都在围栏内，标准模式直接通过。理由：放宽权限是这个功能最容易犯的过度反应——一旦放宽，围栏整体消失，工作树就从「安全边界」降为「改动边界」，而这里并不需要付这个代价。
 
 #### Key Flows
 
 - F3. 勾选并首条发送
-  - **Trigger:** 用户在一个空白会话里勾选 Worktree 并发出首条 prompt。
-  - **Steps:** 判定先决条件（空白、落点可用）→ 物化 worktree → 以该目录为 cwd 创建会话 → 首条 prompt 进入新会话 → 开关归位、徽章出现。
-  - **Outcome:** 用户在同一个界面里开始了一个隔离会话，且隔离态可见。
+  - **Trigger:** 用户在一个空白会话里勾选 Worktree，并发出首条 prompt。
+  - **Steps:** 判定先决条件（会话空白、落点可用）→ 物化 worktree → 把该会话的当前工作目录指向工作树 → 首条 prompt 照常处理 → 开关归位、徽章出现。
+  - **Outcome:** 用户在同一个会话里继续工作，但当前目录已是那棵隔离的树；隔离态可见。
   - **Covers:** R13–R17
 
-- F4. 提交工作树里的改动
-  - **Trigger:** 用户触发宿主侧提交动作。
-  - **Steps:** 读取工作树的改动 → 汇编提交 → 写出 commit。
-  - **Outcome:** 该任务获得一个独立 commit；agent 的 shell 未参与写 Git 元数据。
-  - **Covers:** R19
+- F4. 在工作树里提交与推送
+  - **Trigger:** 当前目录已指向工作树的会话执行 git 写操作。
+  - **Steps:** agent 正常提交、推送、建 PR。
+  - **Outcome:** 提交与推送在既有权限模式下直接成功，无批准请求；各任务各自独立提交。
+  - **Covers:** R18
 
 #### Requirements
 
-- R13. composer 提供 Worktree 开关，只在该会话是空白（尚未产生任何消息）时可用；已有消息的会话里该开关不可用。
-- R14. 开关勾选后，用户发出首条 prompt 时先物化 worktree，再以该目录为 cwd 创建会话；首条 prompt 原样进入新会话。
-- R15. 物化失败时拒绝开跑并报错，不得回落到主仓 cwd 继续。
-- R16. 兑现后开关自动归位为关闭；隔离态改由 composer 上的常驻徽章表达。
-- R17. 徽章只表明「当前会话在 worktree 里」，不展示分支名、落点或未提交数量。
-- R18. 发送失败或用户取消时，不得留下无法追踪的 worktree 产物。
-- R19. （过渡项，特性 C 落地后删除）提供宿主侧提交动作，把该会话在工作树里的改动提交成一个 commit，使提交不必每次依赖沙箱升级批准；不做该项时，提交仍可经既有升级通道完成。
+- R13. composer 提供 Worktree 开关，只在该会话是空白（尚未产生任何消息）时可用；已有消息的会话里不可用。
+- R14. 开关勾选后，用户发出首条 prompt 时先物化 worktree，再把该会话的当前工作目录指向工作树；首条 prompt 照常处理。会话身份与权限模式不变，也不新建会话。
+- R15. 物化失败时拒绝开跑并报错，不得静默回落到原目录；发送失败或用户取消时，不得留下无法追踪的 worktree 产物。
+- R16. 兑现后开关自动归位为关闭；状态改由 composer 上的常驻徽章表达。
+- R17. 徽章表明「本会话的工作树是哪一个」，不展示未提交数量。
+- R18. 在指向工作树的会话里提交与推送，必须在该会话**既有的权限模式下**直接通过：不要求任何权限放宽，也不产生逐次批准请求。
 
 #### Acceptance Examples
 
 - AE5. 空白会话勾选后发送
   - **Given:** 一个空白会话，Worktree 开关已勾选。
   - **When:** 用户发出首条 prompt。
-  - **Then:** 先物化 worktree，再以该目录为 cwd 创建会话；首条 prompt 进入新会话；开关归位为关闭；徽章显示「在 worktree 里」。
+  - **Then:** 先物化 worktree，再把该会话的当前工作目录指向它；首条 prompt 照常处理；开关归位为关闭；chip 转为只读徽章态显示本会话的工作树；会话 id 与权限模式都没变。
   - **Covers:** R13, R14, R16, R17
 
 - AE6. 已聊起的会话
   - **Given:** 一个已经产生过消息的会话。
   - **When:** 用户尝试使用 Worktree 开关。
-  - **Then:** 开关不可用（或明确提示需要新建会话），且不产生任何 worktree。
+  - **Then:** 开关不可用（并说明本开关仅对空白会话开放），且不产生任何 worktree。
   - **Covers:** R13
 
 - AE7. 物化失败
   - **Given:** 目标落点被占用，或 Git 准备失败。
   - **When:** 用户发送首条 prompt。
-  - **Then:** 会话不开始，界面给出错误，且不产生该会话的任何工作目录。
-  - **Covers:** R15, R18
+  - **Then:** 会话不切换目录，界面给出错误，且不产生该会话的任何工作目录。
+  - **Covers:** R15
 
-- AE8. 在工作树里提交
-  - **Given:** 一个在 worktree 里工作的会话，已有未提交改动，且会话处于 `workspace-write`。
-  - **When:** 会话执行写 Git 元数据的命令（如提交）。
-  - **Then:** 首次被围栏拒绝并报出 `file access denied`；申请升级到 `danger-full-access` 并经用户批准后，同一命令成功执行。若已实现 R19 的宿主侧动作，则提交不必经过该批准。
-  - **Covers:** R19
+- AE8. 在工作树里提交与推送
+  - **Given:** 会话的当前目录已指向工作树，已有未提交改动，权限模式为部署默认的 `workspace-write`。
+  - **When:** agent 执行提交与推送。
+  - **Then:** 两者直接成功，**没有任何批准请求**；不需要把会话切到更宽的模式。
+  - **Covers:** R18
 
 #### Success Criteria
 
 - 用户从「决定要隔离」到「在隔离目录里开始干活」只需要勾一下加一次发送。
-- 任何时刻用户都能从 composer 上看出当前会话是否在 worktree 里。
-- 失败时用户拿到的是一个明确的错误，而不是一个悄悄跑在主仓的会话。
+- 任何时刻用户都能从 composer 上看出本会话挂着哪棵工作树。
+- 失败时用户拿到的是一个明确的错误，而不是一个悄悄跑在原目录的会话。
 
 #### Scope Boundaries
 
-- 不做已聊起会话的原地迁移（会话 cwd 创建后不可变）。
+- 不做已聊起会话的原地进入（开关仅对空白会话开放——这是任务边界的选择，见 Key Decisions）。
 - 不做「每个 prompt 一个新副本」或 best-of-N 扇出。
-- 不做 worktree 的回收、TTL、来源标注——那些属特性 A。
-- **代价（非限制）:** 在 `workspace-write` 下，worktree 会话里写 Git 元数据的命令**首次会被拒**，需经一次「升级到 `danger-full-access`」的批准才能执行（提交、推送、建 PR 同理）。升级是**执行级**粒度（一次批准只覆盖那一次执行），因此把若干 git 操作合成一条命令可把批准压成一次。若不希望反复批准，有两条更省的路：把该会话的模式**一次**切到 `danger-full-access`（会话模式落在 `sandbox/mode` 事件上、持久生效，代价是该会话围栏整体消失），或实现 R19 的宿主侧动作（保留围栏且无批准）。
+- 不做 worktree 的回收、TTL、来源标注与清单——那些属特性 A。
+- 本特性只负责**进入**工作树；离开沿用既有的工作目录服务，不做专门的出口 UI。
+- **隔离强度是约定级**：围栏根是检出根，因此覆盖整个检出（含主检出）。工作树保证的是「任务之间的改动互不混淆」，不是「agent 碰不到检出里的其它地方」。
+- **不做**：为这个功能放宽权限模式（一旦放宽，围栏消失，而这里是刻意保留围栏的）。
+
+#### Outstanding Questions
+
+- **Deferred to Planning:** `gh` 为建 PR 可能在 `$HOME` 下写配置或缓存，那会落在围栏之外——提交与推送本身不受影响（都写检出根内的 `.git`），但建 PR 这条路径需要实测确认。
+- **Deferred to Planning:** 右侧栏文件树根是否跟随「当前工作目录」。第三方实现称它取 `header.cwd` 且创建后不可变（该插件整个存在的理由就是绕这一点），而工作目录服务的文档说所选目录会出现在用户上下文中。以哪个为准，实现时确认。
 
 #### Dependencies / Assumptions
 
-- **顺序假设:** 会话创建的时机必须晚于 worktree 物化的时机。
-- **通道假设:** 提交能力在 v1 依赖既有的沙箱升级通道（一次批准一次执行）；R19 的宿主侧动作是消除反复批准的增强。官方运行时只提供 `create()`，开发目标线上也没有可用的第三方 worktree 插件可复用。
-- **空白判定假设:** 「空白会话」的标准是「尚未产生任何消息」。
-- **落点归属假设:** worktree 的创建使用官方实验性 worktree 服务（仅 `0.2.1-alpha.2` 线），因此仍属原 workspace，只改会话 cwd。
-- **打包假设:** 特性 A 与 B 都需要「host 服务 + 客户端半边 + bundle」这同一形状，可在同一个实验性 bundle 内提供，省掉一份打包与三处注册面。
-- **依赖:** composer 输入控件的 slot 契约（`conversation.input.*` 族）与既有开关先例。
+- **两层目录假设:** 会话的 `header.cwd` 出生时冻结、且是写围栏根；「当前工作目录」可变、可回放、消失时回落到原始项目。
+- **落点假设:** 用官方实验性 worktree 服务建树（仅 `0.2.1-alpha.2` 线），其 `directory` 只能是检出根内的相对路径；本特性不改它。
+- **模式假设:** 该会话的权限模式是部署默认（`workspace-write`）；在检出根内工作树与 `.git` 都在围栏内，因此无需放宽。
+- **依赖:** composer 输入控件的 slot 契约（`conversation.input.*` 族）、工作目录服务、以及既有开关先例。
 
 #### Sources / Research
 
-- 会话 cwd 创建时写入且不可变、冲突即抛 `ApiSessionCwdConflict`：`packages/api/session-controller/src/agent.ts`。
-- `session.create` 接受 `workspaceId` 或 `cwd`（互斥），cwd 取值顺序 `workspace?.path ?? request.cwd ?? defaultCwd`：`packages/api/session-controller/src/commands.ts`。
-- 写围栏根 = 会话 cwd（`resolve()` 只读 `session.header.cwd`，不查 workspace 实体）：`packages/sandbox/sandbox-policy/src/index.ts`。
-- `workspace-write` 的可写根只有三个：`packages/sandbox/sandbox/src/roots.ts`。
-- Seatbelt profile 形状（`deny file-write*` + 仅放行上述三个根）：`packages/sandbox/sandbox-local/src/profiles.ts`。
-- `ctx.subprocess` 的 spawn 规格不含沙箱策略字段（宿主侧 git 调用不受会话写围栏约束）：`packages/subprocess/subprocess/src/types.ts`。
-- composer 输入控件 slot 族与完整开关先例：`packages/client/ui-conversation/src/client/contract/slots.ts`、`packages/client/ui-plan`、`packages/plan/plan-mode`。
-- 官方 worktree 不改变 Session 的原始项目，只改工作目录：`docs/subsystems/worktrees.zh.md`（`dsh-v0.2.1-alpha.2`）。
-- 沙箱升级通道（拒绝 → 一次批准后以更宽模式重跑）：`packages/sandbox/sandbox/src/escalation.ts`（`ESCALATION_TARGETS`、`workspace-write → danger-full-access`）、`packages/fs/tool-fs/src/sandbox.ts` 与 `packages/core/tools/src/ptc.ts`（`sandbox_permissions` + `justification` 两个参数）。
+- **会话有两层目录（关键）:** `packages/session/working-directory/README.zh.md`——「改变一个 Session 的工作目录…所选目录可通过回放恢复…当前目录消失时，只要原始项目仍然存在，就恢复到原始项目」；官方 worktree 走的是 `ctx.workingDirectory.set(agent, path, signal)`（`packages/experimental/worktree/src/index.ts:170`），**不改 `header.cwd`**。
+- **围栏根 = `session.header.cwd`:** `packages/sandbox/sandbox-policy/src/index.ts` 的 `resolve()`（另见同为该文件的 `resolveWorkspaceRoot`：只校验「是绝对路径」）。
+- **可写根只有三个:** `packages/sandbox/sandbox/src/roots.ts` 的 `writableRoots`（`[workspaceRoot, '/tmp', tmpdir()]`）。
+- **官方落点的硬校验与解析基准:** `packages/experimental/worktree/src/index.ts:76`（`directory must be a relative directory without dot segments`）与 `:143`（相对 `repositoryRoot` 解析）。
+- **git 在 worktree 里写源仓库的 `.git`:** 实测 `git status` 会重写 `<检出根>/.git/worktrees/<名字>/index`（mtime 与 md5 均变），`git log` 不变；`<检出根>/.git/worktrees/<名字>/` 下是 `HEAD` / `ORIG_HEAD` / `commondir` / `gitdir` / `index` / `logs` / `refs`，工作树目录里只有一个指向它的 `.git` 指针文件。
+- composer 输入控件 slot 族与完整的开关先例：`packages/client/ui-conversation/src/client/contract/slots.ts`、`packages/client/ui-plan`、`packages/plan/plan-mode`。
+- 空白会话判定：`SessionSnapshot.blank`（另有 `promptAttempted` / `awaitingFirstTurn`）与 `conversationPhase()`。
 - 参考实现（**不可依赖**：其 13 个 dsh peer 精确钉 `0.2.0-rc.2`，在 `0.2.1-alpha.2` 线上装不上）：`dsh-git-worktree@0.10.0` 的 `/worktree` 命令族、`lib/session-checkout-apply.js` 的交付状态机、以及用动态 `disabled` 表达式替换官方 workspace UI 的做法。
-
-### 特性 C：受控的额外可写根
-
-#### Summary
-
-给沙箱策略加「受控的额外可写根」能力：会话可以声明一组额外的可写根，使 worktree 会话在保留 `workspace-write` 围栏的前提下写共享 Git 元数据，从而自己完成提交与推送——既不依赖每次批准的沙箱升级，也不必把会话切到 `danger-full-access`。
-
-#### Problem Frame
-
-worktree 与原仓库**共享 `.git`**：worktree 目录下的 `.git` 只是一个指向 `<主仓>/.git/worktrees/<name>` 的文本指针，对象库、索引与该分支的 refs 全在主仓内。而写围栏根是会话自己的 cwd，可写范围只有 `[会话 cwd, /tmp, tmpdir()]`，共享 Git 管理目录正好在围栏之外。于是 worktree 会话里几乎所有 git 命令——包括 `git status`、`git diff` 这类会刷新索引的只读命令——首次执行都会被拒。
-
-今天只有两条退路，都有代价：每次批准一次沙箱升级（连只读命令也被卷进去，且升级是执行级粒度，下一条命令又要再批一次）；或把会话切到 `danger-full-access`（围栏整体消失）。
-
-而围栏管道**本身已经是多根驱动的**：`writableRoots(policy)` 返回数组，macOS 的 Seatbelt profile 与进程内文件围栏都按数组处理，Linux 两个后端与 Windows 的单根 SID 模型才是单根写法。缺的只是策略层没有表达额外根的字段。
-
-#### Key Decisions
-
-**加字段，而不是加模式。** 在策略层引入「额外的可写根」，而不是新增一个介于 `workspace-write` 与 `danger-full-access` 之间的模式。理由：围栏语义应当保持「根的集合」这一个概念；模式再多一档会与其形成组合爆炸，也让每个执行面的判断分叉更多。
-
-**根要切细，不授予整个 `.git`。** 至少覆盖对象库、该工作树的索引、以及该工作树所属分支的 refs；不授予 `.git/hooks` 与 `.git/config`。理由：能写 `.git/hooks/pre-commit` 等于让下一次 git 操作执行任意代码——这是一条直接的提权路径，不能靠「反正是自己的仓库」搪塞。
-
-**凡是给 Git 元数据开口，就必须同时禁用钩子。** 授予 Git 元数据写权限的会话，其 git 调用一律带 `-c core.hooksPath=<禁用的空目录>`。理由：切细根是防线，禁用钩子是兜底；两者单独都不足以覆盖 `.git` 的可写面。
-
-**额外根是一次显式授权，不随附于其它操作。** 声明额外根要有明确的同意动作，不能顺带发生。理由：这实质上是把安全边界的范围向外挪一格，性质上需要同意；把它做成「默认给」会让围栏的语义变模糊。
-
-**平台差异按执行面分别处理，不为齐一而拖延主线。** macOS 的围栏与进程内文件围栏已是数组驱动，能零改动吃到新字段；Linux 两个后端需要改为遍历根集合；Windows 的单根 SID 模型需要单独设计，允许延后并记录为已知缺口。
-
-#### Requirements
-
-- R20. 沙箱策略能表达「会话的可写根集合」，而不只是单个根。
-- R21. 会话可以为自身声明一组额外可写根，且声明需要一次显式授权。
-- R22. 额外根对全部已实现的执行面生效（平台围栏与进程内文件围栏），不出现「某个执行面不认」。
-- R23. 为 Git 元数据授予写权限的会话，其 git 调用必须禁用仓库钩子。
-- R24. 未声明额外根的会话，行为与今天完全一致（无回归）。
-- R25. 平台覆盖：macOS 与进程内文件围栏为必需，Linux 两个后端为必需，Windows 允许延后并记录为已知缺口。
-
-#### Acceptance Examples
-
-- AE9. worktree 会话自行提交
-  - **Given:** 会话处于 `workspace-write`，并已显式声明包含该工作树 Git 元数据的额外根。
-  - **When:** 会话执行提交。
-  - **Then:** 提交成功，且**不产生任何升级批准请求**。
-  - **Covers:** R20, R21, R22
-
-- AE10. 钩子路径被堵
-  - **Given:** 同一个已声明额外根的会话。
-  - **When:** 它执行一次 git 调用。
-  - **Then:** 该调用带禁用钩子的设置，仓库中既有的钩子不运行。
-  - **Covers:** R23
-
-- AE11. 未声明的会话不受影响
-  - **Given:** 一个未声明额外根的 `workspace-write` 会话。
-  - **When:** 它尝试写围栏之外的路径。
-  - **Then:** 仍被拒绝，行为与今天一致。
-  - **Covers:** R24
-
-- AE12. 越界根被拒
-  - **Given:** 一次声明里包含 `.git/hooks`。
-  - **When:** 尝试声明该根。
-  - **Then:** 该子路径被排除或整次声明被拒绝，且钩子目录不可写。
-  - **Covers:** R21, R23
-
-#### Scope Boundaries
-
-- 不做「任意路径都可写」的放开——那是 `danger-full-access` 的职责。
-- 不改变默认模式；默认仍是 `read-only`。
-- 只处理**文件写入根**，不涉及按路径的进程/网络围栏。
-- Windows 平台的等价实现本次延后。
-
-#### Dependencies / Assumptions
-
-- **依赖:** 围栏管道已按数组实现（macOS 围栏与进程内文件围栏已确认如此）。
-- **假设:** 额外根在会话生命周期内稳定，不要求热增删。
-- **假设:** 授权与 `sandbox/mode` 一样落在会话日志里，可回放。
-- **假设:** 声明额外根的来源是知道共享 Git 管理目录的那一方（worktree 服务）。
-
-#### Sources / Research
-
-- `writableRoots` 已返回数组：`packages/sandbox/sandbox/src/roots.ts`。
-- macOS Seatbelt 按数组拼 `(subpath …)`：`packages/sandbox/sandbox-local/src/profiles.ts` 的 `seatbeltProfileArgs`。
-- Linux 两个后端直接取单字段（需小改）：同文件的 `bwrapProfileArgs` 与 `landlockProfileArgs`。
-- 进程内文件围栏遍历数组：`packages/fs/fs-sandbox/src/index.ts`。
-- 策略的单根字段：`packages/sandbox/sandbox/src/index.ts` 的 `SandboxExecutionPolicy`。
-- 解析处（根来自会话 cwd）：`packages/sandbox/sandbox-policy/src/index.ts` 的 `resolve()`。
-- Windows 单根 SID 模型（需结构改动）：`packages/sandbox/sandbox-windows-acl/src/workspace-sid.ts`。
-- 禁用钩子的硬化先例与提权面说明：`dsh-git-worktree` 每次 git 调用都带 `-c core.hooksPath=<禁用的空目录>`。
 
 ---
 
 ## Planning Contract
 
-**范围:** 本 Planning Contract 与下面的 Implementation Units 只覆盖**特性 A（管理页）**。特性 B（composer 开关）与特性 C（受控的额外可写根）目前只有需求，尚未规划——它们的实现单元需要在后续 planning 里补齐。
+**范围:** 本 Planning Contract 与下面的 Implementation Units 覆盖**特性 A（管理页）**与**特性 B（composer 开关）**：特性 A 的单元是 `U1`–`U6`，特性 B 的是 `U7`–`U9`。两个特性的技术设计与决策都记在本节，按特性分组。
 
 ### High-Level Technical Design
 
@@ -408,9 +325,21 @@ worktree 与原仓库**共享 `.git`**：worktree 目录下的 `.git` 只是一�
 
 **KTD-7. 测试止于包级单元与组件测试。** host 侧用真实临时 Git 仓库（`git init` + `git worktree add`）而不是 mock git 输出——来源判定与失效登记这两类逻辑的错法都藏在真实输出格式里；浏览器端到端不引入。
 
+**KTD-8. 开关与徽章是同一个 chip 的两态，不是两个控件。** 空白会话里它是可点的开关；会话已带工作树时它是只读徽章。理由：需求要求「兑现后开关归位、隔离态由徽章表达」，同一个控件承载两态最直接，也避免两个控件在同一行争位置。
+
+**KTD-9. 落点选在检出根内，从而不需要动权限模式。** 围栏根是 `header.cwd`（= 检出根），而工作树与 `.git` 都在它下面，因此标准模式（`workspace-write`）就够——提交与推送直接通过，不要求放宽。理由：放宽权限会让围栏整体消失，把工作树从「安全边界」降为「改动边界」，而这里并不需要付这个代价。这条的代价（隔离是约定级）写在 Scope Boundaries 里，不藏在实现细节里。
+
+**KTD-10. 「空白会话」用现成字段判定，不自建。** `SessionSnapshot.blank` 与 `SessionSummary.blank` 已是现成信号，`ui-conversation` 的 `conversationPhase()` 也把它归约为 `'blank' | 'engaging' | 'active'`。理由：自建判定会与 shell 的 phase 语义分叉，而那张 phase 表已经决定了空白会话渲染哪个界面。
+
+**KTD-11. 不换会话，只改「当前工作目录」。** 会话有两层目录：出生时冻结的 `header.cwd`（写围栏根），以及可变的「当前工作目录」（由工作目录服务记录、可回放、当前目录消失时回落到原始项目）。工作树该去的是后者——改它不动会话身份、不动权限模式、不丢对话上下文，也不需要新建会话。理由：这是本特性里最容易被误判的一点，把两层混为一谈会得出「必须新建会话」的错误结论。
+
+**KTD-12. 失败 fail-closed。** 物化失败即拒绝开跑并报错，绝不回落到主仓 cwd。理由：静默回落会产出「以为在隔离、实际在改主仓」的会话，其代价高于任何一次显式失败。
+
 ### Sequencing
 
 U1 先落地骨架与装配面（没有它，后面任何验证都没有落点）。U2 与 U3 相互独立，可在 U1 之后并行。U4 依赖 U2、U3 的产物形状。U5 依赖 U4 的契约。U6 收口构建与本地挂载验证。
+
+特性 B 的三步：U7 先定出 slot 触点与 chip 的两态，U8 再接宿主侧的物化与「当前工作目录」切换，U9 收口端到端可用性（含两个待确认项：`gh` 的 `$HOME` 写入、文件树根是否跟随当前目录）。U7 与 U8 之间只共享「勾选态 → 首条发送」这一个客户端状态，可先后落地。
 
 ---
 
@@ -466,16 +395,43 @@ U1 先落地骨架与装配面（没有它，后面任何验证都没有落点�
 
 ---
 
+### U7. 特性 B — 核心包新增 composer slot 与开关 chip（两态）
+
+- **Goal:** 在 composer 工具行里提供 Worktree 开关：空白会话时可点，已带工作树时转为只读徽章（KTD-8）。
+- **Files:** `packages/client/ui-conversation/src/client/contract/slots.ts`（新增 `conversation.input.worktree` 声明，与 plan / permission / model 同级）、`packages/client/ui-conversation/src/client/skeleton/InputBar.tsx`（渲染点接入）、`packages/experimental/client-ui-worktree-console/src/client/`（chip 组件与注册）。
+- **Patterns:** 照抄 `packages/client/ui-plan`——slot 注册 + `inject: (sessionId) => …` + locale + owner prop `locked`；只读态用投影判断会话是否已带工作树。
+- **Test Scenarios:** 空白会话渲染可点态；已带工作树的会话渲染只读徽章且不可点；既非空白又无工作树时不渲染；两态都不与 plan / permission / model 争位置。
+- **Verification:** `npx vitest run packages/experimental/client-ui-worktree-console` 全绿；`pnpm run typecheck` 过（含 client program）。
+
+### U8. 特性 B — 首条发送的编排：物化 + 指向当前工作目录
+
+- **Goal:** 勾选态下发出首条 prompt 时，先物化 worktree，再把该会话的**当前工作目录**指向它；首条 prompt 在原会话里照常处理。
+- **Files:** `packages/experimental/worktree-console/src/`（宿主侧编排，调用官方 `ctx.worktrees.create` 与工作目录服务）、`packages/experimental/client-ui-worktree-console/src/client/`（提交路径接线）。
+- **Patterns:** 物化走官方运行时服务（不改它）；目录切换走工作目录服务的公开写路径（`ctx.workingDirectory.set` 那一层），**不碰 `header.cwd`、不新建会话、不动权限模式**；失败 fail-closed（KTD-12）；空白判定用现成字段（KTD-10）。
+- **Test Scenarios:** 勾选后发送 → **会话 id 不变**、当前工作目录变为工作树目录、`header.cwd` 仍等于检出根；未勾选时行为与今天完全一致；物化失败时**不改目录**且报错；目录切换失败时不留半成品（或留下可追踪产物并报错）；会话非空白时开关不可点。
+- **Verification:** `npx vitest run packages/experimental/worktree-console packages/experimental/client-ui-worktree-console` 全绿。
+
+### U9. 特性 B — 端到端可用性收口
+
+- **Goal:** 在**既有权限模式**下走通「勾选 → 发送 → 提交 → 推送」，并给两个待确认项各落一个结论。
+- **Files:** 无新增文件；若走查发现问题，微调落在 `packages/experimental/worktree-console/src/` 与 `packages/experimental/client-ui-worktree-console/src/client/`。
+- **Patterns:** 本单元是验证而非实现——**不引入任何权限相关调用**（不切预设、不 append `sandbox/mode`）。两个待确认项各自给出结论并写回本文档，不留「待定」。
+- **Test Scenarios:** 在指向工作树的会话里，提交与推送各自直接成功、无批准请求；实测 `gh pr create` 路径（若因写 `$HOME` 被拒，记录为已知限制，**不放宽权限**来绕）；实测右侧栏文件树根跟不跟随当前工作目录，并以结论修正 Scope Boundaries。
+- **Verification:** 人工走查（在目标 profile 上完成一次「勾选 → 发送 → 提交 → 推送」）；`pnpm run typecheck` 过。
+
+---
+
 ## Verification Contract
 
 | 命令 | 覆盖单元 | 通过信号 |
 |---|---|---|
-| `pnpm run typecheck` | U1–U5 | 退出码 0，host 与 client 两个 program 都过 |
-| `npx vitest run packages/experimental/worktree-console packages/experimental/client-ui-worktree-console` | U2–U5 | 全部 spec 通过 |
+| `pnpm run typecheck` | U1–U5, U7–U9 | 退出码 0，host 与 client 两个 program 都过 |
+| `npx vitest run packages/experimental/worktree-console packages/experimental/client-ui-worktree-console` | U2–U5, U7–U8 | 全部 spec 通过 |
 | `pnpm run lint` | 全部 | 退出码 0 |
 | `pnpm run build:lib` | U6 | 产出 `lib/client.js` 与 typert 产物 |
 | `dsh --profile <目标 profile> --dump-default-config` | U1, U6 | 输出含 bundle 的条目 |
-| 人工走查（目标 profile 启动后） | U5, U6 | 管理区块可见；list / prune 生效；脏目标删除前列出文件 |
+| 人工走查（目标 profile 启动后） | U5–U6 | 管理区块可见；list / prune 生效；脏目标删除前列出文件 |
+| 人工走查（特性 B） | U7–U9 | 空白会话可见开关、已带工作树的会话显示只读徽章；勾选后发送**不新建会话**、当前工作目录 = 工作树目录且 `header.cwd` 未变；提交与推送在默认 `workspace-write` 下直接通过、**无批准请求**；两个待确认项各自有结论 |
 
 ---
 
@@ -484,9 +440,43 @@ U1 先落地骨架与装配面（没有它，后面任何验证都没有落点�
 - 特性 A：三个包的 `typecheck`、`lint`、单元与组件测试全部通过。
 - 特性 A：`--dump-default-config` 在目标 profile 上输出预期条目，无加载报错。
 - 特性 A：人工走查覆盖列表与来源标签正确、空状态、prune 幂等、干净删除、脏删除的确认内容与取消无副作用。
-- 官方发行面未被触碰：`packages/bundle/web-app/cordis.patch.yml` 与 `packages/bundle/web-app/package.json` 无改动，`OPTIONAL_BUNDLES` 未新增条目。
 - 特性 A：产品合同中的四条验收示例在人工走查里各被走过一次。
-- 特性 B：**尚未规划**——进入实施前需先补齐它的 Implementation Units，并至少验证两条端到端路径：「空白会话勾选 → 发送 → worktree 物化 → 新会话 cwd 正确」，以及「在 worktree 会话里提交 → 首次被拒 → 批准升级 → 提交成功」。
-- 特性 B：已确认 `dsh-git-worktree` **不作为依赖**（其 peer 精确钉 `0.2.0-rc.2`），文档中只保留为参考实现。
-- 特性 C：**尚未规划**——进入实施前需先补齐它的 Implementation Units，并至少验证三条路径：「已声明额外根的会话提交成功且无批准请求」「git 调用带禁用钩子、既有钩子不运行」「未声明额外根的会话仍被围栏拒绝」。
-- 特性 C 落地后：把特性 B 的提交路径从「升级批准」切到额外可写根，并删除 B 的 `R19`。
+- **官方发行面未被触碰**：`packages/bundle/web-app/cordis.patch.yml` 与 `packages/bundle/web-app/package.json` 无改动，`OPTIONAL_BUNDLES` 未新增条目。（唯一的例外是特性 B 的 `U7` 会改核心包 `packages/client/ui-conversation` 的 slot 契约——那是本计划唯一一处核心包改动，需按上游标准带上测试与文档。）
+- 特性 B：`U7`–`U9` 的单元与组件测试全绿，`typecheck` 两个 program 都过。
+- 特性 B：人工走查覆盖它的四条验收示例，特别是两条关键行为：「勾选后发送**不新建会话**，只把当前工作目录指向工作树」，以及「在默认 `workspace-write` 模式下提交与推送**不产生任何批准请求**」。
+- 特性 B：两个待确认项（`gh` 的 `$HOME` 写入、文件树根是否跟随当前工作目录）各有一句结论写回文档，不以「待定」收尾。
+- 特性 B：**权限模式零改动**——不引入预设切换，不 append `sandbox/mode`；提交与推送的可用性完全靠「落点在检出根内」这一条几何事实。
+- 特性 B：已确认 `dsh-git-worktree` **不作为依赖**（其 13 个 dsh peer 精确钉 `0.2.0-rc.2`，在 `0.2.1-alpha.2` 线上装不上），文档中只保留为参考实现。
+
+---
+
+## Appendix
+
+### A1. 特性 B：让「提交与推送」可用的五条路（选型的完整取舍）
+
+问题：worktree 与原仓库**共享 `<检出根>/.git`**，而写围栏根 = `session.header.cwd`、可写范围只有 `[围栏根, /tmp, tmpdir()]`。只要会话的目录不在那个根下面，连 `git status`（会刷新 `<检出根>/.git/worktrees/<名字>/index`）都会被拒。五条路的区别在于「谁来付这个代价」。
+
+| # | 方案 | 改动面 | 提交/推送的批准成本 | 会话目录 | 隔离强度 | 结论 |
+|---|---|---|---|---|---|---|
+| 0 | 什么都不改，逐次批准 | 零 | 每次受限调用一次批准（合成一条命令可压到 1 次） | 不变 | 围栏级 | 可用但每次要点 |
+| 1 | 会话切 `danger-full-access` 预设 | 零（用现成预设） | **零** | 不变 | **围栏整体消失** | 曾选，后弃 |
+| 2 | **落点放在检出根内**（本计划） | 仅客户端 chip + 实验包 | **零** | 改「当前工作目录」 | 围栏级 | **采用** |
+| 3 | clone 一份到围栏内 | 零 | 零 | 改 cwd 或新建会话 | 围栏级 | 弃：不是 worktree，丢 Git 关联 |
+| 4 | 上游加「额外可写根」（C 方案） | 策略类型 + 解析处 + Linux/Windows 后端 | 零 | 不变 | 围栏级（可做细） | 弃：改上游换同一收益 |
+
+**为什么 2 能同时拿到「零批准」和「保留围栏」**：围栏根是 `header.cwd`，而 `header.cwd` = 检出根。把工作树建在**检出根里面**（官方默认落点 `.agents/worktrees/<名字>` 本就在里面），`git` 要写的 `.git` 和工作树自身就都落在这唯一的根里了。围栏没有变小，也不需要开新根——这是几何上的免费午餐。
+
+**为什么 1 被弃**：它把工作树从「安全边界」降级为「改动边界」。可见、可撤回都成立，但代价（agent 能写机器上任意路径）大于收益，而这个收益 2 能免费拿到。
+
+**为什么 4 被弃**（虽然代价比原先估计的小）：执行层其实已经是多根驱动的——`writableRoots(policy)` 返回 `string[]`，macOS seatbelt 与进程内 fs 围栏都是**遍历数组**（零改动），只有 Linux bwrap / landlock 要小改、windows-acl 是结构性改动。但真实工作量在**策略类型加一个根集合字段 + 解析处接一个来源 + 申请/审批语义**，而收益与方案 2 完全相同（都是「零批准 + 保留围栏」）。既然不用改上游就能拿到，就不改上游。
+
+**为什么 0 不是「缺陷」而是退路**：升级批准是**执行级**粒度（`run_code` 是 one execution only，fs 变更工具是 per-call），所以「一次批准」是可达的——把 `git add && git commit && git push && gh pr create` 合成一条命令、放一次 bash 调用即可。它的真实成本是**每次都点**，而不是**做不到**。
+
+### A2. 关于被改掉的「新建会话 + 完全访问」版本
+
+前一轮规划把特性 B 定为「物化后**新建**一个以工作树为 cwd 的会话，并让该会话以 `danger-full-access` 预设出生」。改成最小版的原因有两条，都写在 Key Decisions 里：
+
+1. **「必须新建会话」是基于一个错误前提。** 会话确有两层目录——出生时冻结的 `header.cwd`（写围栏根）与可变的「当前工作目录」（由工作目录服务记录、可回放、目录消失时回落到原始项目）。cwd **不可变**只对前者成立；工作树该去的是后者。因此不换会话也能换目录。
+2. **「必须放宽权限」是同一个错误前提的推论。** 一旦目录落在检出根内，围栏本就罩得住，`danger-full-access` 是多余且有害的过度反应。
+
+保留这个记录是因为：`header.cwd` 与「当前工作目录」的混淆是这条路径上最容易复发的误判，而它曾实际导致一次错误设计。
