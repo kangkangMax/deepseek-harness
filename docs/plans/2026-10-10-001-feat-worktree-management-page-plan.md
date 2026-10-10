@@ -1,5 +1,5 @@
 ---
-title: Worktree Management Page - Plan
+title: Worktree Sessions - Plan
 type: feat
 date: 2026-10-10
 topic: worktree-management-page
@@ -9,22 +9,32 @@ product_contract_source: ce-brainstorm
 execution: code
 ---
 
-# Worktree Management Page - Plan
+# Worktree Sessions - Plan
 
 ## Goal Capsule
 
-- **Objective:** 给 DeepSeek Harness 补一个 worktree 管理页，让用户在一个界面里看清所有已注册仓库的 Git worktree 及其来源，并安全地清理失效登记与删除指定 worktree。
-- **Product authority:** 用户本人——dsh 的重度使用者，同时维护多个仓库、并在机器上并行使用多个 worktree 插件。单人工具，没有第二类使用者。
-- **Delivery shape:** 以第三方伴生插件形式做在 dsh 仓库内，复用官方构建链，挂在插件详情页。
+- **Objective:** 给 DeepSeek Harness 补上 worktree 的两个缺口——(A) 一个能看到并手动清理全部 worktree 的管理页；(B) composer 里的一个 Worktree 开关，让空白会话能一键在自动创建的 worktree 里开工。
+- **Product authority:** 用户本人——dsh 的重度使用者，同时维护多个仓库与多个 worktree 插件，需要并行推进多个独立需求并各自独立提交、独立测试。单人工具，没有第二类使用者。
+- **Delivery shape:** 两个特性都做在 dsh 仓库内的实验性可选 bundle 里，复用官方构建链；A 挂在插件详情页，B 挂在 composer。
 - **Open blockers:** 无。
+- **Readiness note:** 特性 A 已到 implementation-ready（含 Planning Contract 与 6 个实施单元）；**特性 B 目前只有需求，尚未规划**。
 
 ---
 
 ## Product Contract
 
+### 范围说明
+
+本 Product Contract 覆盖两个特性：
+
+- **特性 A — Worktree 管理页**：Requirements `R1`–`R12`，Acceptance Examples `AE1`–`AE4`；已完成规划。
+- **特性 B — Composer Worktree 开关**：Requirements `R13`–`R19`，Acceptance Examples `AE5`–`AE8`；仅需求，尚未规划。
+
+下面第一节到 `### Sources / Research` 属特性 A；`### 特性 B：Composer Worktree 开关` 起属特性 B。
+
 ### Summary
 
-在插件详情页里增加一个 worktree 管理页：左栏列出全部已注册仓库（带 worktree 计数），选中后右栏显示该仓库的 worktree 表，每行给出检出路径、分支、基点提交、改动状态与来源。页面提供两个操作：清理失效登记，以及删除指定 worktree（二次确认）。
+（特性 A）在插件详情页里增加一个 worktree 管理页：左栏列出全部已注册仓库（带 worktree 计数），选中后右栏显示该仓库的 worktree 表，每行给出检出路径、分支、基点提交、改动状态与来源。页面提供两个操作：清理失效登记，以及删除指定 worktree（二次确认）。
 
 ### Problem Frame
 
@@ -170,9 +180,120 @@ flowchart TB
 - 做完整客户端半边的第三方先例（结构参考）: `dsh-git-worktree`。
 - 包清单与注册面的硬性约束: `docs/cookbook/adding-a-package.zh.md`、`packages/client/AGENTS.md` 的 New plugin package checklist、`scripts/check-workspace-constraints.ts`。
 
+### 特性 B：Composer Worktree 开关
+
+#### Summary
+
+在 composer 里给**空白会话**加一个 Worktree 开关：勾选并发出首条 prompt 时，先物化 worktree，再让会话以该目录为 cwd 出生；composer 上常驻一个只读徽章，只表明「当前会话在 worktree 里」。
+
+#### Problem Frame
+
+用户要在同一台机器上并行推进多个独立需求，每个需求各自独立提交、独立测试。今天的做法要么每次手动开目录，要么依赖第三方插件的「新会话勾选」——都没有把「勾选 → 自动建出隔离目录 → 用该目录开会话」压成一步。
+
+同时有一条硬约束必须由产品语义吸收，而不是留给用户去撞：**dsh 的会话 cwd 在创建时写入后不可变**，对已有会话使用不同 cwd 会抛 `ApiSessionCwdConflict`。因此「在一个已经聊起来的会话里换到 worktree」在技术上不可能。
+
+#### Key Decisions
+
+**开关只在空白会话生效。** 对齐「在会话存在之前决定它的出生地」这一语义；已产生消息的会话里开关不可用，用户需另开一个。理由：cwd 不可变，而替换一个进行中的对话会丢掉上下文。
+
+**发送时才物化，原空白会话被替换。** 用户看到的是同一个空白界面变成新会话，实际发生的是「先物化 worktree → 再以该 cwd 创建会话」。理由：只有「会话存在的时刻晚于 worktree 物化的时刻」，cwd 才是对的。
+
+**兑现后勾选态自动归位，隔离态由常驻徽章承担。** 开关不是模式。理由：若照抄 plan / permission 那种可反复开关的模式语义，用户会以为关掉开关能回主仓，而会话其实已经在 worktree 分支上。
+
+**失败 fail-closed。** 准备序列任一步失败即拒绝开跑并报错，绝不静默回落到主仓 cwd。理由：静默回落会产出「以为在隔离、实际在改主仓」的会话，其代价高于任何一次显式失败。
+
+**提交默认会被围栏拒绝，但有一条既有的「一次批准升级」通道。** 写围栏根是会话自己的 cwd，可写范围只有 `[会话 cwd, /tmp, tmpdir()]`；而 worktree 与原仓库**共享 `<主仓>/.git`**，它在围栏之外。因此 worktree 会话里第一次执行写 Git 元数据的命令会被拒（`[sandbox: file access denied under workspace-write mode]`）。但 harness 自带升级通道：变更类工具可携带 `sandbox_permissions` + `justification` 两个参数，经用户批准后以 `danger-full-access` 重跑该次执行——这条路已在 `packages/sandbox/sandbox/src/escalation.ts` 定义（`workspace-write → danger-full-access`），所以「提交 / 推送 / 建 PR」在对话里是可行的，代价是每次都要一次批准。宿主侧提交动作（下条 R19）是把这个代价消掉的可选增强，不是前置条件。
+
+#### Key Flows
+
+- F3. 勾选并首条发送
+  - **Trigger:** 用户在一个空白会话里勾选 Worktree 并发出首条 prompt。
+  - **Steps:** 判定先决条件（空白、落点可用）→ 物化 worktree → 以该目录为 cwd 创建会话 → 首条 prompt 进入新会话 → 开关归位、徽章出现。
+  - **Outcome:** 用户在同一个界面里开始了一个隔离会话，且隔离态可见。
+  - **Covers:** R13–R17
+
+- F4. 提交工作树里的改动
+  - **Trigger:** 用户触发宿主侧提交动作。
+  - **Steps:** 读取工作树的改动 → 汇编提交 → 写出 commit。
+  - **Outcome:** 该任务获得一个独立 commit；agent 的 shell 未参与写 Git 元数据。
+  - **Covers:** R19
+
+#### Requirements
+
+- R13. composer 提供 Worktree 开关，只在该会话是空白（尚未产生任何消息）时可用；已有消息的会话里该开关不可用。
+- R14. 开关勾选后，用户发出首条 prompt 时先物化 worktree，再以该目录为 cwd 创建会话；首条 prompt 原样进入新会话。
+- R15. 物化失败时拒绝开跑并报错，不得回落到主仓 cwd 继续。
+- R16. 兑现后开关自动归位为关闭；隔离态改由 composer 上的常驻徽章表达。
+- R17. 徽章只表明「当前会话在 worktree 里」，不展示分支名、落点或未提交数量。
+- R18. 发送失败或用户取消时，不得留下无法追踪的 worktree 产物。
+- R19. （可选增强）提供宿主侧提交动作，把该会话在工作树里的改动提交成一个 commit，使提交不必每次依赖沙箱升级批准；不做该增强时，提交仍可经既有升级通道完成。
+
+#### Acceptance Examples
+
+- AE5. 空白会话勾选后发送
+  - **Given:** 一个空白会话，Worktree 开关已勾选。
+  - **When:** 用户发出首条 prompt。
+  - **Then:** 先物化 worktree，再以该目录为 cwd 创建会话；首条 prompt 进入新会话；开关归位为关闭；徽章显示「在 worktree 里」。
+  - **Covers:** R13, R14, R16, R17
+
+- AE6. 已聊起的会话
+  - **Given:** 一个已经产生过消息的会话。
+  - **When:** 用户尝试使用 Worktree 开关。
+  - **Then:** 开关不可用（或明确提示需要新建会话），且不产生任何 worktree。
+  - **Covers:** R13
+
+- AE7. 物化失败
+  - **Given:** 目标落点被占用，或 Git 准备失败。
+  - **When:** 用户发送首条 prompt。
+  - **Then:** 会话不开始，界面给出错误，且不产生该会话的任何工作目录。
+  - **Covers:** R15, R18
+
+- AE8. 在工作树里提交
+  - **Given:** 一个在 worktree 里工作的会话，已有未提交改动，且会话处于 `workspace-write`。
+  - **When:** 会话执行写 Git 元数据的命令（如提交）。
+  - **Then:** 首次被围栏拒绝并报出 `file access denied`；申请升级到 `danger-full-access` 并经用户批准后，同一命令成功执行。若已实现 R19 的宿主侧动作，则提交不必经过该批准。
+  - **Covers:** R19
+
+#### Success Criteria
+
+- 用户从「决定要隔离」到「在隔离目录里开始干活」只需要勾一下加一次发送。
+- 任何时刻用户都能从 composer 上看出当前会话是否在 worktree 里。
+- 失败时用户拿到的是一个明确的错误，而不是一个悄悄跑在主仓的会话。
+
+#### Scope Boundaries
+
+- 不做已聊起会话的原地迁移（会话 cwd 创建后不可变）。
+- 不做「每个 prompt 一个新副本」或 best-of-N 扇出。
+- 不做 worktree 的回收、TTL、来源标注——那些属特性 A。
+- **代价（非限制）:** 在 `workspace-write` 下，worktree 会话里写 Git 元数据的命令**首次会被拒**，需经一次「升级到 `danger-full-access`」的批准才能执行（提交、推送、建 PR 同理）。这是既有通道的行为，不是缺陷；R19 的宿主侧动作可消除这一反复批准的成本。
+
+#### Dependencies / Assumptions
+
+- **顺序假设:** 会话创建的时机必须晚于 worktree 物化的时机。
+- **通道假设:** 提交能力在 v1 依赖既有的沙箱升级通道（一次批准一次执行）；R19 的宿主侧动作是消除反复批准的增强。官方运行时只提供 `create()`，开发目标线上也没有可用的第三方 worktree 插件可复用。
+- **空白判定假设:** 「空白会话」的标准是「尚未产生任何消息」。
+- **落点归属假设:** worktree 的创建使用官方实验性 worktree 服务（仅 `0.2.1-alpha.2` 线），因此仍属原 workspace，只改会话 cwd。
+- **打包假设:** 特性 A 与 B 都需要「host 服务 + 客户端半边 + bundle」这同一形状，可在同一个实验性 bundle 内提供，省掉一份打包与三处注册面。
+- **依赖:** composer 输入控件的 slot 契约（`conversation.input.*` 族）与既有开关先例。
+
+#### Sources / Research
+
+- 会话 cwd 创建时写入且不可变、冲突即抛 `ApiSessionCwdConflict`：`packages/api/session-controller/src/agent.ts`。
+- `session.create` 接受 `workspaceId` 或 `cwd`（互斥），cwd 取值顺序 `workspace?.path ?? request.cwd ?? defaultCwd`：`packages/api/session-controller/src/commands.ts`。
+- 写围栏根 = 会话 cwd（`resolve()` 只读 `session.header.cwd`，不查 workspace 实体）：`packages/sandbox/sandbox-policy/src/index.ts`。
+- `workspace-write` 的可写根只有三个：`packages/sandbox/sandbox/src/roots.ts`。
+- Seatbelt profile 形状（`deny file-write*` + 仅放行上述三个根）：`packages/sandbox/sandbox-local/src/profiles.ts`。
+- `ctx.subprocess` 的 spawn 规格不含沙箱策略字段（宿主侧 git 调用不受会话写围栏约束）：`packages/subprocess/subprocess/src/types.ts`。
+- composer 输入控件 slot 族与完整开关先例：`packages/client/ui-conversation/src/client/contract/slots.ts`、`packages/client/ui-plan`、`packages/plan/plan-mode`。
+- 官方 worktree 不改变 Session 的原始项目，只改工作目录：`docs/subsystems/worktrees.zh.md`（`dsh-v0.2.1-alpha.2`）。
+- 沙箱升级通道（拒绝 → 一次批准后以更宽模式重跑）：`packages/sandbox/sandbox/src/escalation.ts`（`ESCALATION_TARGETS`、`workspace-write → danger-full-access`）、`packages/fs/tool-fs/src/sandbox.ts` 与 `packages/core/tools/src/ptc.ts`（`sandbox_permissions` + `justification` 两个参数）。
+- 参考实现（**不可依赖**：其 13 个 dsh peer 精确钉 `0.2.0-rc.2`，在 `0.2.1-alpha.2` 线上装不上）：`dsh-git-worktree@0.10.0` 的 `/worktree` 命令族、`lib/session-checkout-apply.js` 的交付状态机、以及用动态 `disabled` 表达式替换官方 workspace UI 的做法。
+
 ---
 
 ## Planning Contract
+
+**范围:** 本 Planning Contract 与下面的 Implementation Units 只覆盖**特性 A（管理页）**。特性 B（composer 开关）目前只有需求，尚未规划——它的实现单元需要在下一轮 planning 里补齐。
 
 ### High-Level Technical Design
 
@@ -273,9 +394,10 @@ U1 先落地骨架与装配面（没有它，后面任何验证都没有落点�
 
 ## Definition of Done
 
-- 三个包的 `typecheck`、`lint`、单元与组件测试全部通过。
-- `--dump-default-config` 在目标 profile 上输出预期条目，无加载报错。
-- 人工走查覆盖：列表与来源标签正确、空状态、prune 幂等、干净删除、脏删除的确认内容与取消无副作用。
+- 特性 A：三个包的 `typecheck`、`lint`、单元与组件测试全部通过。
+- 特性 A：`--dump-default-config` 在目标 profile 上输出预期条目，无加载报错。
+- 特性 A：人工走查覆盖列表与来源标签正确、空状态、prune 幂等、干净删除、脏删除的确认内容与取消无副作用。
 - 官方发行面未被触碰：`packages/bundle/web-app/cordis.patch.yml` 与 `packages/bundle/web-app/package.json` 无改动，`OPTIONAL_BUNDLES` 未新增条目。
-- 产品合同中的四条验收示例在人工走查里各被走过一次。
-- 本计划记录的新增骨架事实（可选 bundle 先例、客户端包构建形状、`ctx.workspaceRegistry`）在 `### Sources / Research` 里可查。
+- 特性 A：产品合同中的四条验收示例在人工走查里各被走过一次。
+- 特性 B：**尚未规划**——进入实施前需先补齐它的 Implementation Units，并至少验证两条端到端路径：「空白会话勾选 → 发送 → worktree 物化 → 新会话 cwd 正确」，以及「在 worktree 会话里提交 → 首次被拒 → 批准升级 → 提交成功」。
+- 特性 B：已确认 `dsh-git-worktree` **不作为依赖**（其 peer 精确钉 `0.2.0-rc.2`），文档中只保留为参考实现。
