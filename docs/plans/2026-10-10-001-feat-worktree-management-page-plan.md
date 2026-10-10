@@ -13,11 +13,11 @@ execution: code
 
 ## Goal Capsule
 
-- **Objective:** 给 DeepSeek Harness 补上 worktree 的两个缺口——(A) 一个能看到并手动清理全部 worktree 的管理页；(B) composer 里的一个 Worktree 开关，让空白会话能一键在自动创建的 worktree 里开工。
+- **Objective:** 给 DeepSeek Harness 补上 worktree 的三个缺口——(A) 一个能看到并手动清理全部 worktree 的管理页；(B) composer 里的一个 Worktree 开关，让空白会话能一键在自动创建的 worktree 里开工；(C) 给沙箱策略加上「受控的额外可写根」，让 worktree 会话在保留写围栏的前提下自行提交。
 - **Product authority:** 用户本人——dsh 的重度使用者，同时维护多个仓库与多个 worktree 插件，需要并行推进多个独立需求并各自独立提交、独立测试。单人工具，没有第二类使用者。
-- **Delivery shape:** 两个特性都做在 dsh 仓库内的实验性可选 bundle 里，复用官方构建链；A 挂在插件详情页，B 挂在 composer。
+- **Delivery shape:** 三个特性都做在 dsh 仓库内：A 与 B 落在实验性可选 bundle 里（复用官方构建链，A 挂插件详情页、B 挂 composer）；C 落在沙箱策略面。
 - **Open blockers:** 无。
-- **Readiness note:** 特性 A 已到 implementation-ready（含 Planning Contract 与 6 个实施单元）；**特性 B 目前只有需求，尚未规划**。
+- **Readiness note:** 特性 A 已到 implementation-ready（含 Planning Contract 与 6 个实施单元）；**特性 B 与 C 目前只有需求，尚未规划**。
 
 ---
 
@@ -29,8 +29,9 @@ execution: code
 
 - **特性 A — Worktree 管理页**：Requirements `R1`–`R12`，Acceptance Examples `AE1`–`AE4`；已完成规划。
 - **特性 B — Composer Worktree 开关**：Requirements `R13`–`R19`，Acceptance Examples `AE5`–`AE8`；仅需求，尚未规划。
+- **特性 C — 受控的额外可写根**：Requirements `R20`–`R25`，Acceptance Examples `AE9`–`AE12`；仅需求，尚未规划。它独立于 B，落地后取代 B 的提交路径（B 的 `R19` 与升级批准通道随之退役）。
 
-下面第一节到 `### Sources / Research` 属特性 A；`### 特性 B：Composer Worktree 开关` 起属特性 B。
+下面第一节到 `### Sources / Research` 属特性 A；`### 特性 B：Composer Worktree 开关` 与 `### 特性 C：受控的额外可写根` 分属 B 与 C。
 
 ### Summary
 
@@ -202,7 +203,7 @@ flowchart TB
 
 **失败 fail-closed。** 准备序列任一步失败即拒绝开跑并报错，绝不静默回落到主仓 cwd。理由：静默回落会产出「以为在隔离、实际在改主仓」的会话，其代价高于任何一次显式失败。
 
-**提交默认会被围栏拒绝，但有一条既有的「一次批准升级」通道。** 写围栏根是会话自己的 cwd，可写范围只有 `[会话 cwd, /tmp, tmpdir()]`；而 worktree 与原仓库**共享 `<主仓>/.git`**，它在围栏之外。因此 worktree 会话里第一次执行写 Git 元数据的命令会被拒（`[sandbox: file access denied under workspace-write mode]`）。但 harness 自带升级通道：变更类工具可携带 `sandbox_permissions` + `justification` 两个参数，经用户批准后以 `danger-full-access` 重跑该次执行——这条路已在 `packages/sandbox/sandbox/src/escalation.ts` 定义（`workspace-write → danger-full-access`），所以「提交 / 推送 / 建 PR」在对话里是可行的，代价是每次都要一次批准。宿主侧提交动作（下条 R19）是把这个代价消掉的可选增强，不是前置条件。
+**提交默认会被围栏拒绝，但有一条既有的「一次批准升级」通道。** 写围栏根是会话自己的 cwd，可写范围只有 `[会话 cwd, /tmp, tmpdir()]`；而 worktree 与原仓库**共享 `<主仓>/.git`**，它在围栏之外。因此 worktree 会话里第一次执行写 Git 元数据的命令会被拒（`[sandbox: file access denied under workspace-write mode]`）。但 harness 自带升级通道：变更类工具可携带 `sandbox_permissions` + `justification` 两个参数，经用户批准后以 `danger-full-access` 重跑该次执行——这条路已在 `packages/sandbox/sandbox/src/escalation.ts` 定义（`workspace-write → danger-full-access`），所以「提交 / 推送 / 建 PR」在对话里是可行的，代价是每次都要一次批准。宿主侧提交动作（下条 R19）是把这个代价消掉的可选增强，不是前置条件。**本特性的最终形态是把这一层交给特性 C 的受控额外可写根**——C 落地后会话自己即可提交，既不用批准也不放弃围栏，R19 与升级批准通道一并退役。
 
 #### Key Flows
 
@@ -226,7 +227,7 @@ flowchart TB
 - R16. 兑现后开关自动归位为关闭；隔离态改由 composer 上的常驻徽章表达。
 - R17. 徽章只表明「当前会话在 worktree 里」，不展示分支名、落点或未提交数量。
 - R18. 发送失败或用户取消时，不得留下无法追踪的 worktree 产物。
-- R19. （可选增强）提供宿主侧提交动作，把该会话在工作树里的改动提交成一个 commit，使提交不必每次依赖沙箱升级批准；不做该增强时，提交仍可经既有升级通道完成。
+- R19. （过渡项，特性 C 落地后删除）提供宿主侧提交动作，把该会话在工作树里的改动提交成一个 commit，使提交不必每次依赖沙箱升级批准；不做该项时，提交仍可经既有升级通道完成。
 
 #### Acceptance Examples
 
@@ -265,7 +266,7 @@ flowchart TB
 - 不做已聊起会话的原地迁移（会话 cwd 创建后不可变）。
 - 不做「每个 prompt 一个新副本」或 best-of-N 扇出。
 - 不做 worktree 的回收、TTL、来源标注——那些属特性 A。
-- **代价（非限制）:** 在 `workspace-write` 下，worktree 会话里写 Git 元数据的命令**首次会被拒**，需经一次「升级到 `danger-full-access`」的批准才能执行（提交、推送、建 PR 同理）。这是既有通道的行为，不是缺陷；R19 的宿主侧动作可消除这一反复批准的成本。
+- **代价（非限制）:** 在 `workspace-write` 下，worktree 会话里写 Git 元数据的命令**首次会被拒**，需经一次「升级到 `danger-full-access`」的批准才能执行（提交、推送、建 PR 同理）。升级是**执行级**粒度（一次批准只覆盖那一次执行），因此把若干 git 操作合成一条命令可把批准压成一次。若不希望反复批准，有两条更省的路：把该会话的模式**一次**切到 `danger-full-access`（会话模式落在 `sandbox/mode` 事件上、持久生效，代价是该会话围栏整体消失），或实现 R19 的宿主侧动作（保留围栏且无批准）。
 
 #### Dependencies / Assumptions
 
@@ -289,11 +290,97 @@ flowchart TB
 - 沙箱升级通道（拒绝 → 一次批准后以更宽模式重跑）：`packages/sandbox/sandbox/src/escalation.ts`（`ESCALATION_TARGETS`、`workspace-write → danger-full-access`）、`packages/fs/tool-fs/src/sandbox.ts` 与 `packages/core/tools/src/ptc.ts`（`sandbox_permissions` + `justification` 两个参数）。
 - 参考实现（**不可依赖**：其 13 个 dsh peer 精确钉 `0.2.0-rc.2`，在 `0.2.1-alpha.2` 线上装不上）：`dsh-git-worktree@0.10.0` 的 `/worktree` 命令族、`lib/session-checkout-apply.js` 的交付状态机、以及用动态 `disabled` 表达式替换官方 workspace UI 的做法。
 
+### 特性 C：受控的额外可写根
+
+#### Summary
+
+给沙箱策略加「受控的额外可写根」能力：会话可以声明一组额外的可写根，使 worktree 会话在保留 `workspace-write` 围栏的前提下写共享 Git 元数据，从而自己完成提交与推送——既不依赖每次批准的沙箱升级，也不必把会话切到 `danger-full-access`。
+
+#### Problem Frame
+
+worktree 与原仓库**共享 `.git`**：worktree 目录下的 `.git` 只是一个指向 `<主仓>/.git/worktrees/<name>` 的文本指针，对象库、索引与该分支的 refs 全在主仓内。而写围栏根是会话自己的 cwd，可写范围只有 `[会话 cwd, /tmp, tmpdir()]`，共享 Git 管理目录正好在围栏之外。于是 worktree 会话里几乎所有 git 命令——包括 `git status`、`git diff` 这类会刷新索引的只读命令——首次执行都会被拒。
+
+今天只有两条退路，都有代价：每次批准一次沙箱升级（连只读命令也被卷进去，且升级是执行级粒度，下一条命令又要再批一次）；或把会话切到 `danger-full-access`（围栏整体消失）。
+
+而围栏管道**本身已经是多根驱动的**：`writableRoots(policy)` 返回数组，macOS 的 Seatbelt profile 与进程内文件围栏都按数组处理，Linux 两个后端与 Windows 的单根 SID 模型才是单根写法。缺的只是策略层没有表达额外根的字段。
+
+#### Key Decisions
+
+**加字段，而不是加模式。** 在策略层引入「额外的可写根」，而不是新增一个介于 `workspace-write` 与 `danger-full-access` 之间的模式。理由：围栏语义应当保持「根的集合」这一个概念；模式再多一档会与其形成组合爆炸，也让每个执行面的判断分叉更多。
+
+**根要切细，不授予整个 `.git`。** 至少覆盖对象库、该工作树的索引、以及该工作树所属分支的 refs；不授予 `.git/hooks` 与 `.git/config`。理由：能写 `.git/hooks/pre-commit` 等于让下一次 git 操作执行任意代码——这是一条直接的提权路径，不能靠「反正是自己的仓库」搪塞。
+
+**凡是给 Git 元数据开口，就必须同时禁用钩子。** 授予 Git 元数据写权限的会话，其 git 调用一律带 `-c core.hooksPath=<禁用的空目录>`。理由：切细根是防线，禁用钩子是兜底；两者单独都不足以覆盖 `.git` 的可写面。
+
+**额外根是一次显式授权，不随附于其它操作。** 声明额外根要有明确的同意动作，不能顺带发生。理由：这实质上是把安全边界的范围向外挪一格，性质上需要同意；把它做成「默认给」会让围栏的语义变模糊。
+
+**平台差异按执行面分别处理，不为齐一而拖延主线。** macOS 的围栏与进程内文件围栏已是数组驱动，能零改动吃到新字段；Linux 两个后端需要改为遍历根集合；Windows 的单根 SID 模型需要单独设计，允许延后并记录为已知缺口。
+
+#### Requirements
+
+- R20. 沙箱策略能表达「会话的可写根集合」，而不只是单个根。
+- R21. 会话可以为自身声明一组额外可写根，且声明需要一次显式授权。
+- R22. 额外根对全部已实现的执行面生效（平台围栏与进程内文件围栏），不出现「某个执行面不认」。
+- R23. 为 Git 元数据授予写权限的会话，其 git 调用必须禁用仓库钩子。
+- R24. 未声明额外根的会话，行为与今天完全一致（无回归）。
+- R25. 平台覆盖：macOS 与进程内文件围栏为必需，Linux 两个后端为必需，Windows 允许延后并记录为已知缺口。
+
+#### Acceptance Examples
+
+- AE9. worktree 会话自行提交
+  - **Given:** 会话处于 `workspace-write`，并已显式声明包含该工作树 Git 元数据的额外根。
+  - **When:** 会话执行提交。
+  - **Then:** 提交成功，且**不产生任何升级批准请求**。
+  - **Covers:** R20, R21, R22
+
+- AE10. 钩子路径被堵
+  - **Given:** 同一个已声明额外根的会话。
+  - **When:** 它执行一次 git 调用。
+  - **Then:** 该调用带禁用钩子的设置，仓库中既有的钩子不运行。
+  - **Covers:** R23
+
+- AE11. 未声明的会话不受影响
+  - **Given:** 一个未声明额外根的 `workspace-write` 会话。
+  - **When:** 它尝试写围栏之外的路径。
+  - **Then:** 仍被拒绝，行为与今天一致。
+  - **Covers:** R24
+
+- AE12. 越界根被拒
+  - **Given:** 一次声明里包含 `.git/hooks`。
+  - **When:** 尝试声明该根。
+  - **Then:** 该子路径被排除或整次声明被拒绝，且钩子目录不可写。
+  - **Covers:** R21, R23
+
+#### Scope Boundaries
+
+- 不做「任意路径都可写」的放开——那是 `danger-full-access` 的职责。
+- 不改变默认模式；默认仍是 `read-only`。
+- 只处理**文件写入根**，不涉及按路径的进程/网络围栏。
+- Windows 平台的等价实现本次延后。
+
+#### Dependencies / Assumptions
+
+- **依赖:** 围栏管道已按数组实现（macOS 围栏与进程内文件围栏已确认如此）。
+- **假设:** 额外根在会话生命周期内稳定，不要求热增删。
+- **假设:** 授权与 `sandbox/mode` 一样落在会话日志里，可回放。
+- **假设:** 声明额外根的来源是知道共享 Git 管理目录的那一方（worktree 服务）。
+
+#### Sources / Research
+
+- `writableRoots` 已返回数组：`packages/sandbox/sandbox/src/roots.ts`。
+- macOS Seatbelt 按数组拼 `(subpath …)`：`packages/sandbox/sandbox-local/src/profiles.ts` 的 `seatbeltProfileArgs`。
+- Linux 两个后端直接取单字段（需小改）：同文件的 `bwrapProfileArgs` 与 `landlockProfileArgs`。
+- 进程内文件围栏遍历数组：`packages/fs/fs-sandbox/src/index.ts`。
+- 策略的单根字段：`packages/sandbox/sandbox/src/index.ts` 的 `SandboxExecutionPolicy`。
+- 解析处（根来自会话 cwd）：`packages/sandbox/sandbox-policy/src/index.ts` 的 `resolve()`。
+- Windows 单根 SID 模型（需结构改动）：`packages/sandbox/sandbox-windows-acl/src/workspace-sid.ts`。
+- 禁用钩子的硬化先例与提权面说明：`dsh-git-worktree` 每次 git 调用都带 `-c core.hooksPath=<禁用的空目录>`。
+
 ---
 
 ## Planning Contract
 
-**范围:** 本 Planning Contract 与下面的 Implementation Units 只覆盖**特性 A（管理页）**。特性 B（composer 开关）目前只有需求，尚未规划——它的实现单元需要在下一轮 planning 里补齐。
+**范围:** 本 Planning Contract 与下面的 Implementation Units 只覆盖**特性 A（管理页）**。特性 B（composer 开关）与特性 C（受控的额外可写根）目前只有需求，尚未规划——它们的实现单元需要在后续 planning 里补齐。
 
 ### High-Level Technical Design
 
@@ -401,3 +488,5 @@ U1 先落地骨架与装配面（没有它，后面任何验证都没有落点�
 - 特性 A：产品合同中的四条验收示例在人工走查里各被走过一次。
 - 特性 B：**尚未规划**——进入实施前需先补齐它的 Implementation Units，并至少验证两条端到端路径：「空白会话勾选 → 发送 → worktree 物化 → 新会话 cwd 正确」，以及「在 worktree 会话里提交 → 首次被拒 → 批准升级 → 提交成功」。
 - 特性 B：已确认 `dsh-git-worktree` **不作为依赖**（其 peer 精确钉 `0.2.0-rc.2`），文档中只保留为参考实现。
+- 特性 C：**尚未规划**——进入实施前需先补齐它的 Implementation Units，并至少验证三条路径：「已声明额外根的会话提交成功且无批准请求」「git 调用带禁用钩子、既有钩子不运行」「未声明额外根的会话仍被围栏拒绝」。
+- 特性 C 落地后：把特性 B 的提交路径从「升级批准」切到额外可写根，并删除 B 的 `R19`。
