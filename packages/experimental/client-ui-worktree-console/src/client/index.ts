@@ -1,11 +1,15 @@
-/** Browser entry: the worktree management section of the Plugins page. */
+/** Browser entry for the optional worktree management Remote contribution and its section. */
 import type { Context } from '@deepseek-ai/cordis'
+import worktreeConsoleRemote from '@deepseek-ai/dsh-experimental-worktree-console/remote'
+import { mountWorktreeConsole } from './mount.ts'
 
-/** Services this contribution needs; widened as the section lands. */
-export const inject: readonly string[] = []
+export { inject } from './mount.ts'
 
 /**
- * Activate the worktree management contribution.
- * @param _ctx - Client runtime.
+ * Activate the experimental worktree management contribution.
+ * @param ctx - Client runtime.
+ * @returns complete UI and Remote disposer.
  */
-export function apply(_ctx: Context): void {}
+export async function apply(ctx: Context): Promise<() => Promise<void>> {
+  return await mountWorktreeConsole(ctx, worktreeConsoleRemote)
+}
