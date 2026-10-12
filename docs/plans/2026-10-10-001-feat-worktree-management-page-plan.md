@@ -15,7 +15,7 @@ execution: code
 
 - **Objective:** 给 DeepSeek Harness 补上 worktree 的两个缺口——(A) 一个能看到并手动清理全部 worktree 的管理页；(B) composer 里的一个 Worktree 开关，让空白会话能一键在自动创建的 worktree 里开工，并在该隔离会话里直接提交。
 - **Product authority:** 用户本人——dsh 的重度使用者，同时维护多个仓库与多个 worktree 插件，需要并行推进多个独立需求并各自独立提交、独立测试。单人工具，没有第二类使用者。
-- **Delivery shape:** 两个特性都做在 dsh 仓库内的实验性可选 bundle 里，复用官方构建链；A 挂在插件详情页，B 挂在 composer。B 不新建会话、不放宽权限模式，只把会话的**当前工作目录**指向 worktree（唯一的例外是 U7 会改核心包 `ui-conversation` 的 slot 契约）。
+- **Delivery shape:** 两个特性都做在 dsh 仓库内的实验性可选 bundle 里，复用官方构建链；A 挂在插件详情页，B 挂在 composer。B 不新建会话、不放宽权限模式，只把会话的**当前工作目录**指向 worktree。**两个特性都不碰任何官方包**：composer 开关占用 `ui-conversation` 已对外开放的 `conversation.input.left` 扩展位（见 U7），因此不新增 slot、不编辑其骨架。
 - **Open blockers:** 无。
 - **Readiness note:** 特性 A 已到 implementation-ready（含 Planning Contract 与 6 个实施单元，U1–U6）；**特性 B 已补齐规划**（U7–U9），核心结论是「不换会话、不动权限」。
 
@@ -395,20 +395,20 @@ U1 先落地骨架与装配面（没有它，后面任何验证都没有落点�
 
 ---
 
-### U7. 特性 B — 核心包新增 composer slot 与开关 chip（两态）
+### U7. 特性 B — 复用现成的 composer 扩展位与开关 chip（两态）
 
 - **Goal:** 在 composer 工具行里提供 Worktree 开关：空白会话时可点，已带工作树时转为只读徽章（KTD-8）。
-- **Files:** `packages/client/ui-conversation/src/client/contract/slots.ts`（新增 `conversation.input.worktree` 声明，与 plan / permission / model 同级）、`packages/client/ui-conversation/src/client/skeleton/InputBar.tsx`（渲染点接入）、`packages/experimental/client-ui-worktree-console/src/client/`（chip 组件与注册）。
-- **Patterns:** 照抄 `packages/client/ui-plan`——slot 注册 + `inject: (sessionId) => …` + locale + owner prop `locked`；只读态用投影判断会话是否已带工作树。
+- **Files:** `packages/experimental/client-ui-worktree-console/src/client/`（chip 组件与注册）。**不改任何官方包**——原先设想的「在 `packages/client/ui-conversation` 新增 `conversation.input.worktree`」已作废，理由见 Patterns。
+- **Patterns:** 注册到 `ui-conversation` **已声明且已对外开放**的 `conversation.input.left`：声明在 `src/client/contract/slots.ts`（注释「Compact controls at the left of the composer tool row」）、渲染在 `src/client/skeleton/InputBar.tsx` 的 plan / permission 之后、并被 `src/client/apply.ts` 列为可注册的子 slot（`{kind:'list', scope:'session'}`、无 owner props）。chip 形态照抄 `packages/client/ui-plan` 的注册 + locale + `aria-pressed`。**只读态由宿主回答**（`state(sessionId).worktree !== null`），不从客户端投影推断——徽章要反映真实发生的事，而不是客户端对它的乐观猜测。宿主未回答前不渲染，避免挂载时在「已武装/未武装」之间闪。
 - **Test Scenarios:** 空白会话渲染可点态；已带工作树的会话渲染只读徽章且不可点；既非空白又无工作树时不渲染；两态都不与 plan / permission / model 争位置。
 - **Verification:** `npx vitest run packages/experimental/client-ui-worktree-console` 全绿；`pnpm run typecheck` 过（含 client program）。
 
 ### U8. 特性 B — 首条发送的编排：物化 + 指向当前工作目录
 
 - **Goal:** 勾选态下发出首条 prompt 时，先物化 worktree，再把该会话的**当前工作目录**指向它；首条 prompt 在原会话里照常处理。
-- **Files:** `packages/experimental/worktree-console/src/`（宿主侧编排，调用官方 `ctx.worktrees.create` 与工作目录服务）、`packages/experimental/client-ui-worktree-console/src/client/`（提交路径接线）。
-- **Patterns:** 物化走官方运行时服务（不改它）；目录切换走工作目录服务的公开写路径（`ctx.workingDirectory.set` 那一层），**不碰 `header.cwd`、不新建会话、不动权限模式**；失败 fail-closed（KTD-12）；空白判定用现成字段（KTD-10）。
-- **Test Scenarios:** 勾选后发送 → **会话 id 不变**、当前工作目录变为工作树目录、`header.cwd` 仍等于检出根；未勾选时行为与今天完全一致；物化失败时**不改目录**且报错；目录切换失败时不留半成品（或留下可追踪产物并报错）；会话非空白时开关不可点。
+- **Files:** `packages/experimental/worktree-console/src/`（宿主侧编排）、`packages/experimental/client-ui-worktree-console/src/client/`（开关接线）。
+- **Patterns:** 「发送时」在宿主侧的落点是 **`agent/pre-step`**（`packages/core/agent/src/runtime-types.ts`）：它是 waterfall，一次发送正好产生一个 step，且在任何工具运行之前——因此监听器里物化、成功后再 `await next()` 放行该 step。原先担心的「composer 契约里没有提交 seam」并不需要解决：拦截点根本不在客户端。物化与目录切换**一次委托**官方 `ctx.worktrees.create`（它内部已 `ctx.workingDirectory.set` 并返回规范化路径），不自写第二次写目录——被 Git 成功路径之外发布的目录，是页面声称而 Git 从未创建的检出。**不碰 `header.cwd`、不新建会话、不动权限模式**；失败 fail-closed（KTD-12）：物化失败返回 `{ kind: 'reject' }` 拒绝该 step，绝不回落到原目录；意图在尝试前 `delete`，被拒的 step 不会被重试成第二次物化；失败原因存在会话状态里（拒绝不留别的痕迹）。
+- **Test Scenarios:** 勾选后发送 → **会话 id 不变**、宿主报告已进入的工作树、`header.cwd` 不变；未勾选时行为与今天完全一致（监听器直接放行）；物化失败时**返回 reject** 且原因可读；被拒后不重试成第二次物化；释放开关后不再物化；`worktrees` 服务缺席时 `arm` 以 `worktree/unavailable` 拒绝。
 - **Verification:** `npx vitest run packages/experimental/worktree-console packages/experimental/client-ui-worktree-console` 全绿。
 
 ### U9. 特性 B — 端到端可用性收口
@@ -441,7 +441,7 @@ U1 先落地骨架与装配面（没有它，后面任何验证都没有落点�
 - 特性 A：`--dump-default-config` 在目标 profile 上输出预期条目，无加载报错。
 - 特性 A：人工走查覆盖列表与来源标签正确、空状态、prune 幂等、干净删除、脏删除的确认内容与取消无副作用。
 - 特性 A：产品合同中的四条验收示例在人工走查里各被走过一次。
-- **官方发行面未被触碰**：`packages/bundle/web-app/cordis.patch.yml` 与 `packages/bundle/web-app/package.json` 无改动，`OPTIONAL_BUNDLES` 未新增条目。（唯一的例外是特性 B 的 `U7` 会改核心包 `packages/client/ui-conversation` 的 slot 契约——那是本计划唯一一处核心包改动，需按上游标准带上测试与文档。）
+- **官方发行面未被触碰**：`packages/bundle/web-app/cordis.patch.yml` 与 `packages/bundle/web-app/package.json` 无改动，`OPTIONAL_BUNDLES` 未新增条目，且**没有任何官方包被修改**——composer 开关占用的是 `conversation.input.left` 这个已对外开放的扩展位（见 U7）。
 - 特性 B：`U7`–`U9` 的单元与组件测试全绿，`typecheck` 两个 program 都过。
 - 特性 B：人工走查覆盖它的四条验收示例，特别是两条关键行为：「勾选后发送**不新建会话**，只把当前工作目录指向工作树」，以及「在默认 `workspace-write` 模式下提交与推送**不产生任何批准请求**」。
 - 特性 B：两个待确认项（`gh` 的 `$HOME` 写入、文件树根是否跟随当前工作目录）各有一句结论写回文档，不以「待定」收尾。
