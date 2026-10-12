@@ -1,0 +1,40 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/worktree-console/README.md
+/:
+  en: bbb13b921adac1b7
+  zh: c9ece196d59f0bb2
+/deepseek-ai-dsh-experimental-worktree-console:
+  en: 8b54b9afe0f710dc
+  zh: c10de9bd05936365
+/deepseek-ai-dsh-experimental-worktree-console/summary:
+  en: e6bc923af8941142
+  zh: e5711ef4434440c4
+/deepseek-ai-dsh-experimental-worktree-console/table-of-contents:
+  en: 3460b3e585e0c020
+  zh: 534791af20aa1773
+/deepseek-ai-dsh-experimental-worktree-console/use-this-package:
+  en: 4534b31ff620ba23
+  zh: 7d556d268dd1fa3f
+/deepseek-ai-dsh-experimental-worktree-console/understand-the-implementation:
+  en: 00643d8efa248d32
+  zh: 3c639d974969ed86
+/deepseek-ai-dsh-experimental-worktree-console/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-worktree-console/model-experience/session-worktree-entry:
+  en: ecf639c9124dbe4b
+  zh: 21d2003c4ab50a5e
+/deepseek-ai-dsh-experimental-worktree-console/model-experience/session-worktree-entry/what-the-model-sees:
+  en: 1a1eb65ddaae2a83
+  zh: 2f7275080a0d0798
+/deepseek-ai-dsh-experimental-worktree-console/model-experience/session-worktree-entry/token-effect:
+  en: 795f8f9f93e246de
+  zh: 8106606738b46859
+/deepseek-ai-dsh-experimental-worktree-console/model-experience/session-worktree-entry/kv-cache-effect:
+  en: f7ecee5b92e83174
+  zh: 8b1347206e7a0386
+/deepseek-ai-dsh-experimental-worktree-console/known-limitations-and-deferred-work:
+  en: 8ff989df5c5460a2
+  zh: a21611f153729f5b

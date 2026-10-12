@@ -1,0 +1,40 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/client-ui-worktree-console/README.md
+/:
+  en: 20762a8a0a4f691e
+  zh: ee3770f4bd862e60
+/deepseek-ai-dsh-experimental-client-ui-worktree-console:
+  en: b33f53edbec77eeb
+  zh: bbcb94ad3e71341a
+/deepseek-ai-dsh-experimental-client-ui-worktree-console/summary:
+  en: 6a6177e41e8a8e0e
+  zh: 596756c5f6b6cd8d
+/deepseek-ai-dsh-experimental-client-ui-worktree-console/table-of-contents:
+  en: 3460b3e585e0c020
+  zh: 534791af20aa1773
+/deepseek-ai-dsh-experimental-client-ui-worktree-console/use-this-package:
+  en: 33c9e6ce56069e72
+  zh: 4794f5bca4176ff6
+/deepseek-ai-dsh-experimental-client-ui-worktree-console/understand-the-implementation:
+  en: 22644073194a870b
+  zh: 7ebd9e1fac1ade03
+/deepseek-ai-dsh-experimental-client-ui-worktree-console/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-client-ui-worktree-console/model-experience/composer-worktree-switch:
+  en: 46287c047168a646
+  zh: 10f1537a54dc64f9
+/deepseek-ai-dsh-experimental-client-ui-worktree-console/model-experience/composer-worktree-switch/what-the-model-sees:
+  en: 638b0d4663745556
+  zh: 1dd83399bf5fc2c0
+/deepseek-ai-dsh-experimental-client-ui-worktree-console/model-experience/composer-worktree-switch/token-effect:
+  en: 751d4a7c97999df2
+  zh: 2a2b7aab1c1deed7
+/deepseek-ai-dsh-experimental-client-ui-worktree-console/model-experience/composer-worktree-switch/kv-cache-effect:
+  en: e616a53dc177c85f
+  zh: ced4f888b2e82c28
+/deepseek-ai-dsh-experimental-client-ui-worktree-console/known-limitations-and-deferred-work:
+  en: 4475441c58db5612
+  zh: 6b7f207b9cd672a2
