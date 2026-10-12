@@ -54,7 +54,14 @@ export const ORIGIN_RULES: readonly OriginRule[] = [
   {
     origin: 'third-party',
     convention: `dsh-worktree-space, pool <task space root>/${WORKTREE_SPACE_CONTAINER}/<task>/<repository>`,
-    matches: worktreePath => worktreePath.split('/').includes(WORKTREE_SPACE_CONTAINER),
+    // Require the documented `<task>/<repository>` shape after the container: a
+    // bare segment match would claim any checkout that merely lives under a
+    // directory of that name.
+    matches: (worktreePath) => {
+      const segments = worktreePath.split('/')
+      const container = segments.indexOf(WORKTREE_SPACE_CONTAINER)
+      return container !== -1 && segments.length > container + 2
+    },
   },
 ]
 

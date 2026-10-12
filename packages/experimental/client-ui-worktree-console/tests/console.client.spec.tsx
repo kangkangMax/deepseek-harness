@@ -31,6 +31,8 @@ function row(dirtyFiles: readonly string[], over: Partial<ConsoleSnapshot['repos
     present: true,
     stale: false,
     dirtyFiles,
+    ignoredFiles: [],
+    outsideRepository: false,
     locked: false,
     origin: 'official' as const,
     ...over,
@@ -40,16 +42,16 @@ function row(dirtyFiles: readonly string[], over: Partial<ConsoleSnapshot['repos
 function renderSection(options: { subject?: unknown; worktrees?: readonly ReturnType<typeof row>[] } = {}) {
   const list = vi.fn(async () => snapshot(options.worktrees ?? [row([])]))
   const prune = vi.fn(async () => ({ pruned: [] }))
-  const remove = vi.fn(async () => ({ removed: WORKTREE }))
+  const removeWorktree = vi.fn(async () => ({ removed: WORKTREE }))
   const props = {
     subject: options.subject ?? { kind: 'bundle', pkg: { name: BUNDLE, installed: true, enabled: true, rows: [] } },
     t: literalT(),
     list,
     prune,
-    remove,
+    removeWorktree,
   } as unknown as ConsoleProps
   render(<WorktreeConsoleSection {...props} />)
-  return { list, prune, remove }
+  return { list, prune, removeWorktree }
 }
 
 describe('worktree management section', () => {
@@ -78,44 +80,44 @@ describe('worktree management section', () => {
   })
 
   it('names the files at risk and sends nothing when the user cancels', async () => {
-    const { remove } = renderSection({ worktrees: [row(['fresh.txt', 'tracked.txt'])] })
+    const { removeWorktree } = renderSection({ worktrees: [row(['fresh.txt', 'tracked.txt'])] })
 
     fireEvent.click(await screen.findByText(en.remove))
 
     expect(await screen.findByText('fresh.txt')).toBeTruthy()
     expect(screen.getByText('tracked.txt')).toBeTruthy()
-    expect(remove).not.toHaveBeenCalled()
+    expect(removeWorktree).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByText(en.removeCancel))
     await waitFor(() => { expect(screen.queryByText('fresh.txt')).toBeNull() })
-    expect(remove).not.toHaveBeenCalled()
+    expect(removeWorktree).not.toHaveBeenCalled()
   })
 
   it('removes with confirmation once the user accepts losing the changes', async () => {
-    const { remove } = renderSection({ worktrees: [row(['fresh.txt'])] })
+    const { removeWorktree } = renderSection({ worktrees: [row(['fresh.txt'])] })
 
     fireEvent.click(await screen.findByText(en.remove))
     fireEvent.click(await screen.findByText(en.removeConfirmAction))
 
     await waitFor(() => {
-      expect(remove).toHaveBeenCalledWith('wt', WORKTREE, true, expect.anything())
+      expect(removeWorktree).toHaveBeenCalledWith('wt', WORKTREE, true, expect.anything())
     })
   })
 
   // R8: every row confirms before it runs. A clean checkout still gets the
   // step — it simply has no file list to show.
   it('confirms before removing a clean worktree', async () => {
-    const { remove } = renderSection()
+    const { removeWorktree } = renderSection()
 
     fireEvent.click(await screen.findByText(en.remove))
 
     expect(await screen.findByText(en.removeConfirmAction)).toBeTruthy()
     expect(screen.queryByText(en.removeLostFiles)).toBeNull()
-    expect(remove).not.toHaveBeenCalled()
+    expect(removeWorktree).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByText(en.removeConfirmAction))
     await waitFor(() => {
-      expect(remove).toHaveBeenCalledWith('wt', WORKTREE, false, expect.anything())
+      expect(removeWorktree).toHaveBeenCalledWith('wt', WORKTREE, false, expect.anything())
     })
   })
 

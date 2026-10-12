@@ -18,8 +18,6 @@ export interface WorktreeRow {
   readonly branch: string | null
   /** Commit the registration currently points at. */
   readonly head: string
-  /** Whether the checkout directory still exists. */
-  readonly present: boolean
   /**
    * Registered without a checkout directory. `prune` is the repair; `remove`
    * refuses these because there is no directory left to remove.
@@ -27,6 +25,16 @@ export interface WorktreeRow {
   readonly stale: boolean
   /** Repository-relative paths with uncommitted changes; empty when the checkout is absent. */
   readonly dirtyFiles: readonly string[]
+  /**
+   * Repository-relative paths Git ignores. A removal deletes these too, so
+   * they gate the confirmation even though they are not "changes".
+   */
+  readonly ignoredFiles: readonly string[]
+  /**
+   * The checkout sits outside the repository that registered it, so the
+   * repository-root fence cannot cover its removal.
+   */
+  readonly outsideRepository: boolean
   /**
    * Git marked this registration `locked`. A locked checkout cannot be removed
    * without a second `--force`, so the page reports it instead of offering an

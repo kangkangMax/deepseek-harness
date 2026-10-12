@@ -32,6 +32,7 @@ export const en = {
   staleHint:
     'The registration has no checkout directory. “Clean up stale registrations” removes it.',
   locked: 'Locked',
+  outsideRepository: 'Outside this repository',
 
   refresh: 'Refresh',
   loading: 'Loading worktrees…',
@@ -44,6 +45,7 @@ export const en = {
   removeConfirm: 'Remove this worktree?',
   removeConfirmHint: 'The checkout directory is deleted and its registration dropped.',
   removeLostFiles: 'These uncommitted changes will be lost:',
+  removeLostIgnored: '{count} ignored files will also be deleted.',
   removeConfirmAction: 'Remove and discard changes',
   removeCancel: 'Cancel',
   removeDone: 'Removed {path}.',
@@ -83,6 +85,7 @@ export const zh: typeof en = {
   stale: '检出已丢失',
   staleHint: '登记还在但检出目录不存在。用「清理失效登记」把它清掉。',
   locked: '已锁定',
+  outsideRepository: '在本仓库之外',
 
   refresh: '刷新',
   loading: '正在读取工作树…',
@@ -95,6 +98,7 @@ export const zh: typeof en = {
   removeConfirm: '确定删除这个工作树？',
   removeConfirmHint: '检出目录会被删除，登记也会被移除。',
   removeLostFiles: '以下未提交改动会丢失：',
+  removeLostIgnored: '另有 {count} 个被 ignore 的文件也会被删除。',
   removeConfirmAction: '删除并丢弃改动',
   removeCancel: '取消',
   removeDone: '已删除 {path}。',

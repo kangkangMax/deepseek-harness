@@ -86,9 +86,14 @@ export interface GitPort {
    * `<repositoryRoot>/.git/worktrees/<name>`, which a fence rooted on the
    * checkout would deny.
    * @param worktreePath - checkout to inspect.
-   * @returns repository-relative paths with uncommitted changes.
+   * @returns what a removal would destroy: tracked and untracked changes, and
+   * the ignored files a delete takes with it.
    */
-  readonly status: (repositoryRoot: string, worktreePath: string, signal: AbortSignal) => Promise<readonly string[]>
+  readonly status: (
+    repositoryRoot: string,
+    worktreePath: string,
+    signal: AbortSignal,
+  ) => Promise<{ changed: readonly string[]; ignored: readonly string[] }>
   /**
    * @param repositoryRoot - canonical repository root.
    * @returns after stale registrations are cleared.
@@ -105,48 +110,67 @@ export interface GitPort {
 
 /**
  * Parse `git worktree list --porcelain`.
+ *
+ * Records are recognised by their `worktree ` line rather than by a blank-line
+ * separator, so a trailing blank line or a `prunable <reason>` that wraps
+ * cannot merge two registrations.
  * @param stdout - command output.
  * @returns one entry per registration, in the order Git printed them.
  */
 export function parseWorktreeList(stdout: string): readonly RegisteredWorktree[] {
   const entries: RegisteredWorktree[] = []
-  for (const block of stdout.replaceAll('\r\n', '\n').split('\n\n')) {
-    const lines = block.split('\n').filter(line => line.length > 0)
-    const header = lines[0]
-    if (header === undefined || !header.startsWith('worktree ')) continue
-    let head = ''
-    let branch: string | null = null
-    let bare = false
-    let locked = false
-    let prunable = false
-    for (const line of lines.slice(1)) {
-      if (line.startsWith('HEAD ')) head = line.slice('HEAD '.length).trim()
-      else if (line.startsWith('branch ')) branch = line.slice('branch '.length).trim()
-      else if (line === 'detached') branch = null
-      else if (line === 'bare') bare = true
-      else if (line === 'locked' || line.startsWith('locked ')) locked = true
-      else if (line === 'prunable' || line.startsWith('prunable ')) prunable = true
+  let current: {
+    path: string
+    head: string
+    branch: string | null
+    bare: boolean
+    locked: boolean
+    prunable: boolean
+  } | undefined
+  const flush = (): void => { if (current !== undefined) entries.push(current) }
+  for (const line of stdout.replaceAll('\r\n', '\n').split('\n')) {
+    if (line.startsWith('worktree ')) {
+      flush()
+      current = { path: line.slice('worktree '.length), head: '', branch: null, bare: false, locked: false, prunable: false }
+      continue
     }
-    entries.push({ path: header.slice('worktree '.length), head, branch, bare, locked, prunable })
+    if (current === undefined) continue
+    if (line.startsWith('HEAD ')) current.head = line.slice('HEAD '.length).trim()
+    else if (line.startsWith('branch ')) current.branch = line.slice('branch '.length).trim()
+    else if (line === 'detached') current.branch = null
+    else if (line === 'bare') current.bare = true
+    else if (line === 'locked' || line.startsWith('locked ')) current.locked = true
+    else if (line === 'prunable' || line.startsWith('prunable ')) current.prunable = true
   }
+  flush()
   return entries
 }
 
 /**
- * Parse `git status --porcelain`.
- * @param stdout - command output, with `core.quotePath=false` so paths are literal.
- * @returns one path per changed entry; a rename reports its destination.
+ * Parse `git status --porcelain -z`.
+ *
+ * NUL separation is what makes this exact: a path may contain a newline, and a
+ * rename record carries two paths. Quoting is off in the call, so no path
+ * arrives C-escaped.
+ * @param stdout - command output.
+ * @returns changed paths, and the ignored paths a delete would take with them.
  */
-export function parseStatusPorcelain(stdout: string): readonly string[] {
-  const paths: string[] = []
-  for (const line of stdout.replaceAll('\r\n', '\n').split('\n')) {
+export function parseStatusPorcelain(stdout: string): { changed: readonly string[]; ignored: readonly string[] } {
+  const tokens = stdout.split('\0')
+  const changed: string[] = []
+  const ignored: string[] = []
+  for (let index = 0; index < tokens.length; index++) {
+    const entry = tokens[index]
     // `XY <path>`: two status columns and a separating space.
-    if (line.length < 4) continue
-    const entry = line.slice(3)
-    const renamed = entry.split(' -> ')
-    paths.push(renamed[renamed.length - 1] ?? entry)
+    if (entry === undefined || entry.length < 4) continue
+    const code = entry.slice(0, 2)
+    const path = entry.slice(3)
+    // A rename or copy record carries the source as the next token.
+    if (code.startsWith('R') || code.startsWith('C')) index++
+    if (code === '!!') ignored.push(path)
+    else changed.push(path)
   }
-  return paths
+  return { changed, ignored }
 }
 
 /**
@@ -197,7 +221,13 @@ export function createGitPort(
       const stdout = captured.stdout.readFrom(0)
       const stderr = captured.stderr.readFrom(0)
       if (outcome.exitCode === null || !allowedExitCodes.includes(outcome.exitCode)) {
-        throw new Error(`git ${args.join(' ')} failed (${outcome.signal ?? outcome.exitCode}): ${stderr.text.trim()}`)
+        // Say which deadline expired. The bare `null` this used to print named
+        // neither the fault nor the fix.
+        const timedOut = bound.aborted && !signal.aborted
+        const cause = timedOut
+          ? `timed out after ${config.timeoutMs}ms`
+          : `failed (${outcome.signal ?? String(outcome.exitCode)})`
+        throw new Error(`git ${args.join(' ')} ${cause}: ${stderr.text.trim()}`)
       }
       if (stdout.lossy) throw new Error(`git ${args.join(' ')} output exceeds maxOutputBytes`)
       return { stdout: stdout.text, exitCode: outcome.exitCode }
@@ -218,7 +248,14 @@ export function createGitPort(
       return parseWorktreeList(stdout)
     },
     async status(repositoryRoot, worktreePath, signal) {
-      const { stdout } = await runGit(repositoryRoot, worktreePath, ['status', '--porcelain'], signal)
+      // `--ignored=matching` is what keeps a "clean" checkout honest: a file
+      // the repository ignores is still a file a removal deletes.
+      const { stdout } = await runGit(
+        repositoryRoot,
+        worktreePath,
+        ['status', '--porcelain', '-z', '--ignored=matching', '--untracked-files=all'],
+        signal,
+      )
       return parseStatusPorcelain(stdout)
     },
     async prune(repositoryRoot, signal) {

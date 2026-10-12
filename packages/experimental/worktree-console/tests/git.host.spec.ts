@@ -47,13 +47,19 @@ describe('porcelain grammars', () => {
     ])
   })
 
-  it('reads changed paths and reports a rename destination', () => {
+  it('separates changed paths from ignored ones and reads a rename destination', () => {
     expect(parseStatusPorcelain([
       ' M tracked.txt',
       '?? fresh.txt',
-      'R  old.txt -> new.txt',
+      '!! .env',
+      'R  new.txt\0old.txt\0',
       '',
-    ].join('\n'))).toEqual(['tracked.txt', 'fresh.txt', 'new.txt'])
+    ].join('\0'))).toEqual({
+      // The NUL-separated rename record carries its source as the next token,
+      // which the parser consumes rather than reporting.
+      changed: ['tracked.txt', 'fresh.txt', 'new.txt'],
+      ignored: ['.env'],
+    })
   })
 })
 
@@ -71,9 +77,9 @@ describe('Git port over the real providers', () => {
     expect(entries[1]?.branch).toBe('refs/heads/feature/one')
     expect(entries[1]?.head).toMatch(/^[0-9a-f]{40}$/)
 
-    expect(await port.status(fixture, worktree, signal)).toEqual([])
+    expect(await port.status(fixture, worktree, signal)).toEqual({ changed: [], ignored: [] })
     await writeFile(join(worktree, 'fresh.txt'), 'draft\n')
-    expect(await port.status(fixture, worktree, signal)).toEqual(['fresh.txt'])
+    expect((await port.status(fixture, worktree, signal)).changed).toEqual(['fresh.txt'])
 
     // Every command that writes Git metadata is fenced on the repository the
     // caller named — including `status` run inside a checkout, whose index

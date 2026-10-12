@@ -42,7 +42,12 @@ export async function mountWorktreeConsole(
   contribution: TypertRemoteContribution,
 ): Promise<() => Promise<void>> {
   const disposeRemote = await ctx.remote.$mount(contribution)
-  const ui = ctx.inject(['remote.worktrees', 'slots', 'locale'], registerUi)
+  // Deliberately not gated on `remote.worktrees`. Waiting for the namespace
+  // turns a mount fault into an entry that never activates, and the boot then
+  // reports a timeout with no cause. Registering against `remote` alone lets
+  // the entry come up, and a namespace that really is missing surfaces as a
+  // failed call the page can show instead.
+  const ui = ctx.inject(['remote', 'slots', 'locale'], registerUi)
   try {
     await ui
   } catch (error: unknown) {

@@ -14,7 +14,7 @@ import { promisify } from 'node:util'
 import { Context } from '@deepseek-ai/cordis'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
-import type { WorktreeRuntime } from '../src/enter.ts'
+import type { WorktreeService } from '@deepseek-ai/dsh-experimental-worktree'
 import WorktreeConsole from '../src/index.ts'
 
 const execute = promisify(execFile)
@@ -51,7 +51,10 @@ export async function repository(parent: string = tmpdir()): Promise<string> {
     await git(path, 'config', 'user.email', 'worktree-console@example.invalid')
     await git(path, 'config', 'commit.gpgSign', 'false')
     await writeFile(join(path, 'tracked.txt'), 'initial\n')
-    await git(path, 'add', 'tracked.txt')
+    // Committed up front so a worktree already has an ignore rule: a case that
+    // needs an ignored file must not have to add one and dirty the tree first.
+    await writeFile(join(path, '.gitignore'), '.env\n')
+    await git(path, 'add', 'tracked.txt', '.gitignore')
     await git(path, 'commit', '-m', 'initial')
     return path
   } catch (error: unknown) {
@@ -91,7 +94,7 @@ export interface Harness {
 export async function harness(
   root: string,
   repositories: readonly string[] = [],
-  worktrees?: WorktreeRuntime,
+  worktrees?: Pick<WorktreeService, 'create'>,
 ): Promise<Harness> {
   const ctx = new Context()
   const sandbox: RecordingSandbox = {
