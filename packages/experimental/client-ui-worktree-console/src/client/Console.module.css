@@ -12,9 +12,19 @@
 }
 
 .title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
   font-size: 14px;
   font-weight: 600;
+}
+
+/* The same branch glyph the composer switch and the bundle icon carry, so the
+   section reads as the same feature wherever it appears. */
+.titleGlyph {
+  flex: none;
+  color: var(--dsh-color-text-secondary);
 }
 
 .hint {

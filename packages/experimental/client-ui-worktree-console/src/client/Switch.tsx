@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconBranchOutlineRegular, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -85,7 +85,7 @@ export function WorktreeSwitch(props: WorktreeSwitchProps) {
       title={t('switchHint')}
       disabled={busy}
       onClick={toggle}
-    >{t('switchLabel')}</button>
+    ><IconBranchOutlineRegular className={css.glyph} size={14} />{t('switchLabel')}</button>
     {state.failure !== null && <span className={css.failure} role="status">
       {t('switchArmFailed', { reason: state.failure })}
     </span>}
