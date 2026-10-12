@@ -13,9 +13,13 @@ import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
+import { enterWorktree, worktreeRuntime } from './enter.ts'
 import { createGitPort, type GitConfig, type GitPort } from './git.ts'
 import { classifyOrigin } from './sources.ts'
-import type { ConsoleSnapshot, PruneOutcome, RemoveOutcome, RepositoryRows, WorktreeRow } from './types.ts'
+import type {
+  ConsoleSnapshot, EnteredWorktree, PruneOutcome, RemoveOutcome, RepositoryRows,
+  WorktreeArmRequest, WorktreeRow, WorktreeSessionState,
+} from './types.ts'
 import { listRepositories, type RepositoryRef } from './workspaces.ts'
 
 export type * from './types.ts'
@@ -39,6 +43,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'worktree/stale': { readonly path: string }
     /** Git refused the removal. */
     'worktree/remove-failed': { readonly path: string; readonly reason: string }
+    /** The official worktree runtime is not loaded, so nothing can be entered. */
+    'worktree/unavailable': { readonly reason: string }
   }
 }
 
@@ -73,10 +79,102 @@ export class WorktreeConsole extends TypertRemoteService {
   })
 
   private readonly git: GitPort
+  /** Sessions whose next step materializes a worktree first. */
+  private readonly armed = new Map<string, WorktreeArmRequest>()
+  /** Worktrees this console materialized, by Session. */
+  private readonly entered = new Map<string, EnteredWorktree>()
+  /** Last materialization failure per Session; a refused step leaves no other trace. */
+  private readonly failures = new Map<string, string>()
 
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'worktreeConsole', { namespace: 'worktrees' })
     this.git = createGitPort(ctx, this.limits(), repositoryRoot => this.policyFor(repositoryRoot))
+    // "On send" from the Host side is the Session's next step: a send produces
+    // one, and it lands before any tool runs in the directory being left.
+    ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
+      const sessionId: string = agent.session.id
+      const pending = this.armed.get(sessionId)
+      if (pending === undefined) return await next()
+      // Spend the intent before attempting: a refused step must not be retried
+      // into a second materialization.
+      this.armed.delete(sessionId)
+      this.failures.delete(sessionId)
+      const runtime = worktreeRuntime(ctx)
+      if (runtime === undefined) {
+        this.failures.set(sessionId, 'the official worktree plugin is not loaded')
+        return { kind: 'reject' as const }
+      }
+      try {
+        const created = await enterWorktree(runtime, agent, pending, signal)
+        this.entered.set(sessionId, {
+          path: created.path,
+          branch: created.branch,
+          baseCommit: created.baseCommit,
+          repositoryRoot: created.repositoryRoot,
+        })
+      } catch (error: unknown) {
+        // Fail closed. Continuing would run the step in the directory the user
+        // meant to leave, which is the one outcome worse than not running.
+        this.failures.set(sessionId, error instanceof Error ? error.message : String(error))
+        return { kind: 'reject' as const }
+      }
+      return await next()
+    })
+  }
+
+  private stateOf(sessionId: string): WorktreeSessionState {
+    return {
+      armed: this.armed.has(sessionId),
+      worktree: this.entered.get(sessionId) ?? null,
+      failure: this.failures.get(sessionId) ?? null,
+    }
+  }
+
+  /**
+   * Arm one Session so its next step materializes a worktree first.
+   * @param sessionId - Session the composer switch belongs to.
+   * @param request - optional branch name and start revision.
+   * @param signal - cancellation.
+   * @returns this Session's intent and outcome.
+   */
+  @Remote
+  async arm(sessionId: string, request: WorktreeArmRequest, signal: AbortSignal): Promise<WorktreeSessionState> {
+    signal.throwIfAborted()
+    if (worktreeRuntime(this.ctx) === undefined) {
+      throw new RemoteError(
+        'worktree/unavailable',
+        'the official worktree plugin is not loaded',
+        { reason: 'no-worktrees-service' },
+      )
+    }
+    this.armed.set(sessionId, request)
+    this.failures.delete(sessionId)
+    return this.stateOf(sessionId)
+  }
+
+  /**
+   * Drop an intent without materializing anything.
+   * @param sessionId - Session the composer switch belongs to.
+   * @param signal - cancellation.
+   * @returns this Session's intent and outcome.
+   */
+  @Remote
+  async disarm(sessionId: string, signal: AbortSignal): Promise<WorktreeSessionState> {
+    signal.throwIfAborted()
+    this.armed.delete(sessionId)
+    return this.stateOf(sessionId)
+  }
+
+  /**
+   * Read one Session's worktree intent and outcome.
+   * @param sessionId - Session the composer switch belongs to.
+   * @param signal - cancellation.
+   * @returns the armed flag, the checkout once one exists, and any failure.
+   */
+  @Remote
+  async state(sessionId: string, signal: AbortSignal): Promise<WorktreeSessionState> {
+    signal.throwIfAborted()
+    return this.stateOf(sessionId)
   }
 
   private limits(): GitConfig {

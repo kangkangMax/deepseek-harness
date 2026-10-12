@@ -65,3 +65,36 @@ export interface RemoveOutcome {
   /** The checkout path that was removed. */
   readonly removed: string
 }
+
+/** What the composer switch asks the Host to prepare. */
+export interface WorktreeArmRequest {
+  /** Branch name, also the checkout directory name; omission generates one. */
+  readonly name?: string
+  /** Local revision to start from; omission selects HEAD. */
+  readonly from?: string
+}
+
+/** The checkout a Session was moved into. */
+export interface EnteredWorktree {
+  /** Canonical absolute checkout directory. */
+  readonly path: string
+  /** Newly created branch name. */
+  readonly branch: string
+  /** Resolved commit the checkout starts from. */
+  readonly baseCommit: string
+  /** Canonical root of the repository the checkout came from. */
+  readonly repositoryRoot: string
+}
+
+/** One Session's worktree intent and outcome, as the composer switch reads it. */
+export interface WorktreeSessionState {
+  /** Whether the next step of this Session will materialize a worktree first. */
+  readonly armed: boolean
+  /** The checkout this Session was moved into, once one exists. */
+  readonly worktree: EnteredWorktree | null
+  /**
+   * Why the last attempt failed, or null. A failure also refused the step, so
+   * this is the only place the reason survives.
+   */
+  readonly failure: string | null
+}
