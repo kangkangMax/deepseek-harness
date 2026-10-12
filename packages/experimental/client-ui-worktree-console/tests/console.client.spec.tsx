@@ -23,7 +23,7 @@ function snapshot(worktrees: ConsoleSnapshot['repositories'][number]['worktrees'
   return { repositories: [{ id: 'wt', path: '/repos/dsh', title: 'dsh', worktrees }] }
 }
 
-function row(dirtyFiles: readonly string[]): ConsoleSnapshot['repositories'][number]['worktrees'][number] {
+function row(dirtyFiles: readonly string[], over: Partial<ConsoleSnapshot['repositories'][number]['worktrees'][number]> = {}) {
   return {
     path: WORKTREE,
     branch: 'brave-otter',
@@ -31,7 +31,9 @@ function row(dirtyFiles: readonly string[]): ConsoleSnapshot['repositories'][num
     present: true,
     stale: false,
     dirtyFiles,
-    origin: 'official',
+    locked: false,
+    origin: 'official' as const,
+    ...over,
   }
 }
 
@@ -100,16 +102,30 @@ describe('worktree management section', () => {
     })
   })
 
-  // A clean checkout has nothing to warn about, so the click is the confirmation.
-  it('removes a clean worktree without a confirmation step', async () => {
+  // R8: every row confirms before it runs. A clean checkout still gets the
+  // step — it simply has no file list to show.
+  it('confirms before removing a clean worktree', async () => {
     const { remove } = renderSection()
 
     fireEvent.click(await screen.findByText(en.remove))
 
+    expect(await screen.findByText(en.removeConfirmAction)).toBeTruthy()
+    expect(screen.queryByText(en.removeLostFiles)).toBeNull()
+    expect(remove).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByText(en.removeConfirmAction))
     await waitFor(() => {
       expect(remove).toHaveBeenCalledWith('wt', WORKTREE, false, expect.anything())
     })
-    expect(screen.queryByText(en.removeConfirmAction)).toBeNull()
+  })
+
+  // Git refuses a locked checkout without a second --force, so the row reports
+  // the lock instead of offering an action that cannot succeed.
+  it('reports a locked checkout instead of offering removal', async () => {
+    renderSection({ worktrees: [row([], { locked: true })] })
+
+    expect(await screen.findByText(en.locked)).toBeTruthy()
+    expect(screen.queryByText(en.remove)).toBeNull()
   })
 
   it('clears stale registrations for the selected repository', async () => {

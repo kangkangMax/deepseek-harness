@@ -1,10 +1,11 @@
 /**
- * The Remote-facing face the management section renders from.
+ * The Remote-facing faces the two components render from — the management
+ * section's and the composer switch's.
  *
- * Kept apart from the component so the component can be tested against a
+ * Kept apart from the components so a component can be tested against a
  * literal face: browser specs must not import the generated Remote artifact,
  * which only exists after a build.
- * @module @deepseek-ai/dsh-experimental-client-ui-worktree-console/src/client/console
+ * @module @deepseek-ai/dsh-experimental-client-ui-worktree-console/src/client/face
  */
 
 import type { Context } from '@deepseek-ai/cordis'

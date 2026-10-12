@@ -31,6 +31,7 @@ export const en = {
   stale: 'Missing checkout',
   staleHint:
     'The registration has no checkout directory. “Clean up stale registrations” removes it.',
+  locked: 'Locked',
 
   refresh: 'Refresh',
   loading: 'Loading worktrees…',
@@ -51,7 +52,6 @@ export const en = {
 
   switchLabel: 'Worktree',
   switchHint: 'Create a Git worktree for this session and work in it',
-  switchUnavailable: 'Only an empty session can start in a worktree',
   switchWorking: 'Working in {branch}',
   switchArmFailed: 'Could not prepare a worktree: {reason}',
 }
@@ -82,6 +82,7 @@ export const zh: typeof en = {
 
   stale: '检出已丢失',
   staleHint: '登记还在但检出目录不存在。用「清理失效登记」把它清掉。',
+  locked: '已锁定',
 
   refresh: '刷新',
   loading: '正在读取工作树…',
@@ -102,7 +103,6 @@ export const zh: typeof en = {
 
   switchLabel: '工作树',
   switchHint: '为本会话创建一个 Git 工作树并在其中工作',
-  switchUnavailable: '只有空白会话可以从工作树开始',
   switchWorking: '正在 {branch} 中工作',
   switchArmFailed: '无法准备工作树：{reason}',
 }

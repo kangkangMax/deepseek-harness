@@ -229,6 +229,7 @@ export class WorktreeConsole extends TypertRemoteService {
         present,
         stale: !present,
         dirtyFiles: present ? await this.git.status(repository.path, entry.path, signal) : [],
+        locked: entry.locked,
         origin: classifyOrigin(entry.path, repository.path),
       })
     }
