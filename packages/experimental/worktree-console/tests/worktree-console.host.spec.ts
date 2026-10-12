@@ -40,7 +40,7 @@ describe('worktree console Remote', () => {
     expect(snapshot.repositories[0]?.path).toBe(fixture)
     expect(snapshot.repositories[0]?.worktrees).toEqual([
       { path: one, branch: 'brave-otter', head: expect.stringMatching(/^[0-9a-f]{40}$/) as unknown as string,
-        present: true, stale: false, dirtyFiles: [], origin: 'official' },
+        present: true, stale: false, dirtyFiles: [], locked: false, origin: 'official' },
     ])
   })
 

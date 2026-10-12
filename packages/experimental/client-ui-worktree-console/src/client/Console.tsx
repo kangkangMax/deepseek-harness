@@ -123,12 +123,10 @@ function Console(props: ConsoleProps) {
   }
 
   function requestRemoval(repositoryId: string, row: WorktreeRow): void {
-    if (row.dirtyFiles.length === 0) {
-      // A clean removal needs no ceremony. If the working tree turned dirty
-      // since this page was read, the Host refuses and the user sees why.
-      void submitRemoval({ repositoryId, path: row.path, files: [] }, false)
-      return
-    }
+    // Every removal confirms before it runs (R8). A clean checkout still gets
+    // the step: the confirmation is what the user is agreeing to, and the Host
+    // re-reads the working tree before acting, so a row that went dirty since
+    // this page was read is refused rather than deleted unseen.
     setNotice(undefined)
     setPending({ repositoryId, path: row.path, files: row.dirtyFiles })
   }
@@ -204,7 +202,8 @@ function Console(props: ConsoleProps) {
                     </td>
                     <td>{originLabel(row.origin, t)}</td>
                     <td>
-                      {!row.stale && <Button
+                      {row.locked && <Tag tone="neutral">{t('locked')}</Tag>}
+                      {!row.stale && !row.locked && <Button
                         size="sm"
                         disabled={busy}
                         onClick={() => { requestRemoval(selected.id, row) }}
@@ -227,7 +226,7 @@ function Console(props: ConsoleProps) {
         </ul>
       </>}
       <div className={css.confirmActions}>
-        <Button size="sm" disabled={busy} onClick={() => { void submitRemoval(pending, true) }}>
+        <Button size="sm" disabled={busy} onClick={() => { void submitRemoval(pending, pending.files.length > 0) }}>
           {t('removeConfirmAction')}
         </Button>
         <Button size="sm" disabled={busy} onClick={() => { setPending(undefined) }}>{t('removeCancel')}</Button>

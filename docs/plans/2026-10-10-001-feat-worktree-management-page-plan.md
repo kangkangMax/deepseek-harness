@@ -380,8 +380,8 @@ U1 先落地骨架与装配面（没有它，后面任何验证都没有落点�
 ### U5. 客户端管理区块
 
 - **Goal:** 在插件详情页渲染主从管理区块，含来源标签、prune 与带确认的 remove。
-- **Files:** `packages/experimental/client-ui-worktree-console/src/client/index.tsx`、`packages/experimental/client-ui-worktree-console/src/client/slot-contract.ts`、`packages/experimental/client-ui-worktree-console/tests/console.client.spec.tsx`。
-- **Patterns:** 照抄 `packages/client/ui-plugin-manager/src/client/` 的 slots 注册与 subject 过滤；对不属于官方 worktree bundle 的 subject 返回 `null`；远程结果判 `code` 而非 `instanceof`。
+- **Files:** `packages/experimental/client-ui-worktree-console/src/client/Console.tsx`（区块组件，含 subject 闸门）、`src/client/Console.module.css`、`src/client/face.ts`（把 `RemoteResult` 解成区块与开关两个 face）、`src/client/locales.ts`、`src/client/mount.ts`（slot 注册）、`tests/console.client.spec.tsx`。
+- **Patterns:** 照抄 `packages/client/ui-plugin-manager/src/client/` 的 slots 注册；subject 闸门写在组件自己的第一行（非本 bundle 的 subject 返回 `null`），不另开 slot-contract 模块；远程结果判 `code` 而非 `instanceof`。
 - **Test Scenarios:** 列表渲染出仓库计数与行字段；空仓库渲染空状态；脏行确认里出现具体文件列表；取消确认后不发出写调用；来源标签三种取值各自渲染正确。
 - **Verification:** `npx vitest run packages/experimental/client-ui-worktree-console/tests/console.client.spec.tsx` 全绿。
 

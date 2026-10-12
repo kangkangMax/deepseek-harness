@@ -27,6 +27,12 @@ export interface WorktreeRow {
   readonly stale: boolean
   /** Repository-relative paths with uncommitted changes; empty when the checkout is absent. */
   readonly dirtyFiles: readonly string[]
+  /**
+   * Git marked this registration `locked`. A locked checkout cannot be removed
+   * without a second `--force`, so the page reports it instead of offering an
+   * action Git would refuse.
+   */
+  readonly locked: boolean
   /** Which tooling placed this checkout, per the landing-spot table. */
   readonly origin: WorktreeOrigin
 }
