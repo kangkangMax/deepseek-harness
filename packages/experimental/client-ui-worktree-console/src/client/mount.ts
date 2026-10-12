@@ -7,20 +7,28 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
-import { createConsoleFace } from './console.ts'
+import { createConsoleFace, createSwitchFace } from './console.ts'
 import { WorktreeConsoleSection } from './Console.tsx'
+import { WorktreeSwitch } from './Switch.tsx'
 import { en, NS, zh } from './locales.ts'
 
 export const inject = ['remote', 'slots', 'locale']
 
 function registerUi(ctx: Context): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }))
-  const face = createConsoleFace(ctx)
   // The section draws its own heading and decides from the subject whether it
   // belongs on the page it was handed.
+  const section = createConsoleFace(ctx)
   ctx.slots.inject('plugins.detail.section', () => ctx.slots.register({
-    name: 'plugins.detail.section', locale: NS, inject: () => face,
+    name: 'plugins.detail.section', locale: NS, inject: () => section,
   }, WorktreeConsoleSection))
+  // `conversation.input.left` is the composer tool row's own list seat, drawn
+  // beside the plan and permission controls. Using it keeps this feature out of
+  // the conversation package entirely: no new slot, no edited skeleton.
+  const face = createSwitchFace(ctx)
+  ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
+    name: 'conversation.input.left', id: 'worktree', order: 100, locale: NS, inject: () => face,
+  }, WorktreeSwitch))
 }
 
 /**
