@@ -32,7 +32,10 @@ export type ConsoleProps =
 interface PendingRemoval {
   readonly repositoryId: string
   readonly path: string
+  /** Tracked and untracked paths that would be lost, listed by name. */
   readonly files: readonly string[]
+  /** Ignored paths that would also be deleted; shown as a count, not a list. */
+  readonly ignoredCount: number
 }
 
 /** Shorten a commit for the table without hiding which commit it is. */
@@ -48,10 +51,12 @@ export function WorktreeConsoleSection(props: ConsoleProps) {
 }
 
 function originLabel(origin: WorktreeOrigin, t: ConsoleProps['t']): string {
+  // Every member is listed and there is no fallback arm, so adding an origin
+  // stops compiling here instead of silently rendering as `manual`.
   switch (origin) {
     case 'official': return t('originOfficial')
     case 'third-party': return t('originThirdParty')
-    default: return t('originManual')
+    case 'manual': return t('originManual')
   }
 }
 
@@ -110,7 +115,7 @@ function Console(props: ConsoleProps) {
     setBusy(true)
     setFailure(undefined)
     try {
-      await props.remove(target.repositoryId, target.path, force, new AbortController().signal)
+      await props.removeWorktree(target.repositoryId, target.path, force, new AbortController().signal)
       setPending(undefined)
       setNotice(t('removeDone', { path: target.path }))
       setRefreshToken(token => token + 1)
@@ -128,7 +133,12 @@ function Console(props: ConsoleProps) {
     // re-reads the working tree before acting, so a row that went dirty since
     // this page was read is refused rather than deleted unseen.
     setNotice(undefined)
-    setPending({ repositoryId, path: row.path, files: row.dirtyFiles })
+    setPending({
+      repositoryId,
+      path: row.path,
+      files: row.dirtyFiles,
+      ignoredCount: row.ignoredFiles.length,
+    })
   }
 
   const selected = repositories?.find(row => row.id === selectedId)
@@ -203,7 +213,8 @@ function Console(props: ConsoleProps) {
                     <td>{originLabel(row.origin, t)}</td>
                     <td>
                       {row.locked && <Tag tone="neutral">{t('locked')}</Tag>}
-                      {!row.stale && !row.locked && <Button
+                      {row.outsideRepository && <Tag tone="neutral">{t('outsideRepository')}</Tag>}
+                      {!row.stale && !row.locked && !row.outsideRepository && <Button
                         size="sm"
                         disabled={busy}
                         onClick={() => { requestRemoval(selected.id, row) }}
@@ -225,8 +236,15 @@ function Console(props: ConsoleProps) {
           {pending.files.map(file => <li key={file}>{file}</li>)}
         </ul>
       </>}
+      {pending.ignoredCount > 0 && <p className={css.hint}>
+        {t('removeLostIgnored', { count: pending.ignoredCount })}
+      </p>}
       <div className={css.confirmActions}>
-        <Button size="sm" disabled={busy} onClick={() => { void submitRemoval(pending, pending.files.length > 0) }}>
+        <Button
+          size="sm"
+          disabled={busy}
+          onClick={() => { void submitRemoval(pending, pending.files.length > 0 || pending.ignoredCount > 0) }}
+        >
           {t('removeConfirmAction')}
         </Button>
         <Button size="sm" disabled={busy} onClick={() => { setPending(undefined) }}>{t('removeCancel')}</Button>

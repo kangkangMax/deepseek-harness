@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
+import { remoteErrorOf, remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import { git, harness, repository, type Harness } from './harness.ts'
 
 let fixture: string | undefined
@@ -40,7 +40,7 @@ describe('worktree console Remote', () => {
     expect(snapshot.repositories[0]?.path).toBe(fixture)
     expect(snapshot.repositories[0]?.worktrees).toEqual([
       { path: one, branch: 'brave-otter', head: expect.stringMatching(/^[0-9a-f]{40}$/) as unknown as string,
-        present: true, stale: false, dirtyFiles: [], locked: false, origin: 'official' },
+        stale: false, dirtyFiles: [], ignoredFiles: [], outsideRepository: false, locked: false, origin: 'official' },
     ])
   })
 
@@ -82,7 +82,7 @@ describe('worktree console Remote', () => {
     await writeFile(join(one, 'fresh.txt'), 'draft\n')
     live = await harness(fixture, [fixture])
 
-    const failure = await live.ctx.worktreeConsole.remove(fixture, one, false, signal()).catch((error: unknown) => error)
+    const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, one, false, signal()).catch((error: unknown) => error)
 
     expect(remoteErrorOf(failure)).toMatchObject({ code: 'worktree/dirty', details: { path: one, files: ['fresh.txt'] } })
     expect(await registered(fixture)).toContain(one)
@@ -94,7 +94,7 @@ describe('worktree console Remote', () => {
     await writeFile(join(one, 'fresh.txt'), 'draft\n')
     live = await harness(fixture, [fixture])
 
-    expect(await live.ctx.worktreeConsole.remove(fixture, one, true, signal())).toEqual({ removed: one })
+    expect(await live.ctx.worktreeConsole.removeWorktree(fixture, one, true, signal())).toEqual({ removed: one })
     expect(await registered(fixture)).not.toContain(one)
   })
 
@@ -110,13 +110,51 @@ describe('worktree console Remote', () => {
     expect(await registered(fixture)).toContain(kept)
   })
 
+  // An ignored file is a file the removal deletes. Reporting the checkout as
+  // clean would let the delete happen without ever showing the user what went.
+  it('reports an ignored file on the row and refuses to discard it unconfirmed', async () => {
+    fixture = await repository()
+    const one = await worktreeAt(fixture, 'brave-otter')
+    await writeFile(join(one, '.env'), 'SECRET=1\n')
+    live = await harness(fixture, [fixture])
+
+    const rows = (await live.ctx.worktreeConsole.list(signal())).repositories[0]?.worktrees ?? []
+    expect(rows[0]?.dirtyFiles).toEqual([])
+    expect(rows[0]?.ignoredFiles).toEqual(['.env'])
+
+    const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, one, false, signal()).catch((error: unknown) => error)
+    expect(remoteErrorOf(failure)).toMatchObject({ code: 'worktree/dirty', details: { files: ['.env'] } })
+    expect(await registered(fixture)).toContain(one)
+  })
+
+  // The fence root is the repository, so a checkout from a pool outside it
+  // cannot be removed here. The refusal names that instead of letting Git fail
+  // inside the sandbox with a message about paths.
+  it('refuses a checkout registered from outside the repository', async () => {
+    fixture = await repository()
+    const outside = await mkdtemp(join(tmpdir(), 'dsh-console-outside-'))
+    try {
+      await git(fixture, 'worktree', 'add', '-b', 'elsewhere', outside)
+      live = await harness(fixture, [fixture])
+
+      const rows = (await live.ctx.worktreeConsole.list(signal())).repositories[0]?.worktrees ?? []
+      expect(rows[0]?.outsideRepository).toBe(true)
+
+      const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, outside, true, signal())
+        .catch((error: unknown) => error)
+      expect(remoteErrorOf(failure)).toMatchObject({ code: 'worktree/outside-repository', details: { path: outside } })
+    } finally {
+      await rm(outside, { recursive: true, force: true })
+    }
+  })
+
   it('refuses a stale registration, because pruning is the repair', async () => {
     fixture = await repository()
     const one = await worktreeAt(fixture, 'brave-otter')
     await rm(one, { recursive: true, force: true })
     live = await harness(fixture, [fixture])
 
-    const failure = await live.ctx.worktreeConsole.remove(fixture, one, true, signal()).catch((error: unknown) => error)
+    const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, one, true, signal()).catch((error: unknown) => error)
 
     expect(remoteErrorOf(failure)).toMatchObject({ code: 'worktree/stale', details: { path: one } })
   })
@@ -125,7 +163,7 @@ describe('worktree console Remote', () => {
     fixture = await repository()
     live = await harness(fixture, [fixture])
 
-    const failure = await live.ctx.worktreeConsole.remove(fixture, join(fixture, 'nowhere'), true, signal())
+    const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, join(fixture, 'nowhere'), true, signal())
       .catch((error: unknown) => error)
 
     expect(remoteErrorOf(failure)).toMatchObject({ code: 'worktree/not-found', details: { repositoryId: fixture } })
@@ -141,5 +179,32 @@ describe('worktree console Remote', () => {
       code: 'worktree/repository-not-found',
       details: { repositoryId: 'not-a-repository' },
     })
+  })
+})
+
+// A namespace service owns a surface of its own, and `$mount` installs the
+// Remote methods onto it. A method named `remove` landed on the service's own
+// `remove` and the mount refused the whole contribution — which surfaced as an
+// entry that never activated, with the boot reporting a bare `failed` and no
+// cause. Reserved names, mirrored from `packages/api/gateway/src/client/index.ts`:
+// the `REMOTE_NAMESPACE_FIELDS` set (line 750) plus the members of
+// `RemoteNamespaceService.prototype` — `assertMethodAvailable`, `empty`, `has`,
+// `installDirect`, `installScoped`, `remove` — and the cordis `Service` base's
+// `ctx` and `name`. A rename is the repair; this test is what keeps the next
+// one from shipping the same fault.
+const RESERVED_WIRE_NAMES = new Set([
+  'ctx', 'empty', 'invokeRemote', 'methods', 'name', 'namespace',
+  'assertMethodAvailable', 'has', 'installDirect', 'installScoped', 'remove',
+])
+
+describe('worktree console wire names', () => {
+  it('keeps every Remote method off the namespace service surface', async () => {
+    fixture = await repository()
+    live = await harness(fixture, [fixture])
+
+    const wire = remoteMethods(live.ctx.worktreeConsole).map(marker => marker.exportName ?? marker.method)
+
+    expect([...wire].sort()).toEqual(['arm', 'disarm', 'list', 'prune', 'removeWorktree', 'state'])
+    expect(wire.filter(name => RESERVED_WIRE_NAMES.has(name))).toEqual([])
   })
 })

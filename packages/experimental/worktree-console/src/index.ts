@@ -15,8 +15,8 @@ import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typer
 import type {} from '@deepseek-ai/dsh-fs'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-workspace'
-import { enterWorktree, worktreeRuntime } from './enter.ts'
-import { createGitPort, type GitConfig, type GitPort } from './git.ts'
+import { worktreeRuntime } from './enter.ts'
+import { createGitPort, type GitPort } from './git.ts'
 import { classifyOrigin } from './sources.ts'
 import type {
   ConsoleSnapshot, EnteredWorktree, PruneOutcome, RemoveOutcome, RepositoryRows,
@@ -43,8 +43,17 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'worktree/dirty': { readonly path: string; readonly files: readonly string[] }
     /** The registration has no checkout directory left; pruning is the repair. */
     'worktree/stale': { readonly path: string }
+    /** The checkout is registered from a pool outside the repository, so this fence cannot cover its removal. */
+    'worktree/outside-repository': { readonly path: string; readonly repositoryRoot: string }
     /** Git refused the removal. */
     'worktree/remove-failed': { readonly path: string; readonly reason: string }
+    /**
+     * Git dropped the registration but did not finish deleting the checkout.
+     * The directory may remain on disk while the repository has no record.
+     */
+    'worktree/remove-partial': { readonly path: string; readonly reason: string }
+    /** No live Session carries that id. */
+    'worktree/unknown-session': { readonly sessionId: string }
     /** The official worktree runtime is not loaded, so nothing can be entered. */
     'worktree/unavailable': { readonly reason: string }
   }
@@ -88,9 +97,9 @@ export class WorktreeConsole extends TypertRemoteService {
   /** Last materialization failure per Session; a refused step leaves no other trace. */
   private readonly failures = new Map<string, string>()
 
-  constructor(ctx: Context, private readonly config: Config) {
+  constructor(ctx: Context, config: Required<Config>) {
     super(ctx, 'worktreeConsole', { namespace: 'worktrees' })
-    this.git = createGitPort(ctx, this.limits(), repositoryRoot => this.policyFor(repositoryRoot))
+    this.git = createGitPort(ctx, config, repositoryRoot => this.policyFor(repositoryRoot))
     // "On send" from the Host side is the Session's next step: a send produces
     // one, and it lands before any tool runs in the directory being left.
     ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
@@ -107,7 +116,7 @@ export class WorktreeConsole extends TypertRemoteService {
         return { kind: 'reject' as const }
       }
       try {
-        const created = await enterWorktree(runtime, agent, pending, signal)
+        const created = await runtime.create(agent, pending, signal)
         this.entered.set(sessionId, {
           path: created.path,
           branch: created.branch,
@@ -149,6 +158,13 @@ export class WorktreeConsole extends TypertRemoteService {
         { reason: 'no-worktrees-service' },
       )
     }
+    // The client offers the switch only for an empty Session, but the Host does
+    // not take that on trust from the wire: a stale tab or a replay must not be
+    // able to move a Session that is already under way.
+    const sessions = this.ctx.get('sessions') as { get(id: string): unknown } | undefined
+    if (sessions !== undefined && sessions.get(sessionId) === undefined) {
+      throw new RemoteError('worktree/unknown-session', `no Session "${sessionId}"`, { sessionId })
+    }
     this.armed.set(sessionId, request)
     this.failures.delete(sessionId)
     return this.stateOf(sessionId)
@@ -179,23 +195,21 @@ export class WorktreeConsole extends TypertRemoteService {
     return this.stateOf(sessionId)
   }
 
-  private limits(): GitConfig {
-    return {
-      timeoutMs: this.config.timeoutMs ?? 30_000,
-      graceMs: this.config.graceMs ?? 2_000,
-      maxOutputBytes: this.config.maxOutputBytes ?? 4 * 1024 * 1024,
-      gitCommand: this.config.gitCommand ?? 'git',
-    }
-  }
-
   /**
-   * The fence root is the repository being operated on. Every path these
-   * commands write — `.git/worktrees/<name>`, and the checkout itself, which the
-   * official plugin places under `<root>/.agents/worktrees` — sits inside it.
+   * The fence root is the repository being operated on: the shared
+   * `.git/worktrees/<name>` state and the official `.agents/worktrees` pool both
+   * sit inside it, so `workspace-write` covers every command this service
+   * issues for that repository.
+   *
+   * A checkout registered from a pool *outside* the repository is therefore
+   * visible here but not repairable here — `removeWorktree` refuses it by name
+   * rather than letting Git fail inside the sandbox. Widening this to cover such
+   * a checkout would need a policy that carries more than one root.
    *
    * The session plane is deliberately not consulted: this page owns no session,
    * and the fail-safe deployment default (`read-only`) would make prune and
-   * remove impossible while adding no protection the root itself does not give.
+   * `removeWorktree` impossible while adding no protection the root itself does
+   * not give.
    */
   private policyFor(repositoryRoot: string): SandboxExecutionPolicy {
     return { mode: 'workspace-write', workspaceRoot: repositoryRoot }
@@ -222,13 +236,19 @@ export class WorktreeConsole extends TypertRemoteService {
       // it and `prune` never touches it, so it is not a row.
       if (entry.bare || entry.path === repository.path) continue
       const present = await this.exists(entry.path, signal)
+      // One uninspectable checkout degrades its own row instead of blanking the
+      // whole page with a rejection.
+      const risk = present
+        ? await this.git.status(repository.path, entry.path, signal).catch(() => ({ changed: [], ignored: [] }))
+        : { changed: [], ignored: [] }
       rows.push({
         path: entry.path,
         branch: shortBranch(entry.branch),
         head: entry.head,
-        present,
         stale: !present,
-        dirtyFiles: present ? await this.git.status(repository.path, entry.path, signal) : [],
+        dirtyFiles: risk.changed,
+        ignoredFiles: risk.ignored,
+        outsideRepository: !entry.path.startsWith(`${repository.path}/`),
         locked: entry.locked,
         origin: classifyOrigin(entry.path, repository.path),
       })
@@ -272,6 +292,11 @@ export class WorktreeConsole extends TypertRemoteService {
 
   /**
    * Remove one worktree and its registration.
+   *
+   * The wire name is `removeWorktree` rather than `remove`: every mounted
+   * namespace installs its methods on a service whose own surface already owns
+   * `remove`, so `$mount` refuses the shorter name outright. See the reserved
+   * surface asserted in `tests/worktree-console.host.spec.ts`.
    * @param repositoryId - registered repository owning the checkout.
    * @param path - absolute checkout path.
    * @param force - discard uncommitted changes instead of refusing.
@@ -279,9 +304,19 @@ export class WorktreeConsole extends TypertRemoteService {
    * @returns the removed checkout path.
    */
   @Remote
-  async remove(repositoryId: string, path: string, force: boolean, signal: AbortSignal): Promise<RemoveOutcome> {
+  async removeWorktree(repositoryId: string, path: string, force: boolean, signal: AbortSignal): Promise<RemoveOutcome> {
     signal.throwIfAborted()
     const repository = await this.requireRepository(repositoryId, signal)
+    // The fence root is this repository, so a checkout registered from a pool
+    // outside it cannot be removed here. Refuse by name instead of letting Git
+    // fail inside the sandbox with a message about paths.
+    if (!path.startsWith(`${repository.path}/`)) {
+      throw new RemoteError(
+        'worktree/outside-repository',
+        `"${path}" is outside "${repository.path}"`,
+        { path, repositoryRoot: repository.path },
+      )
+    }
     const entry = (await this.git.list(repository.path, signal)).find(candidate => candidate.path === path)
     if (entry === undefined) {
       throw new RemoteError('worktree/not-found', `no worktree at "${path}"`, { repositoryId, path })
@@ -290,16 +325,30 @@ export class WorktreeConsole extends TypertRemoteService {
       throw new RemoteError('worktree/stale', `the checkout at "${path}" no longer exists`, { path })
     }
     // Re-read the working tree here rather than trusting the page's snapshot:
-    // the confirmation the user saw may be older than the current changes.
-    const dirtyFiles = await this.git.status(repository.path, path, signal)
-    if (dirtyFiles.length > 0 && !force) {
-      throw new RemoteError('worktree/dirty', `"${path}" has uncommitted changes`, { path, files: dirtyFiles })
+    // the confirmation the user saw may be older than what is now at risk.
+    // Ignored files count — a removal deletes them too.
+    const risk = await this.git.status(repository.path, path, signal)
+    const atRisk = [...risk.changed, ...risk.ignored]
+    if (atRisk.length > 0 && !force) {
+      throw new RemoteError('worktree/dirty', `"${path}" has changes or ignored files`, { path, files: atRisk })
     }
     try {
       await this.git.remove(repository.path, path, force, signal)
     } catch (error: unknown) {
       const reason = error instanceof Error ? error.message : String(error)
-      throw new RemoteError('worktree/remove-failed', reason, { path, reason }, { cause: error })
+      // Git can drop the registration while failing to delete the checkout, so
+      // report what the repository now holds rather than assuming nothing moved.
+      const registered = (await this.git.list(repository.path, signal)).some(candidate => candidate.path === path)
+      throw new RemoteError(
+        registered ? 'worktree/remove-failed' : 'worktree/remove-partial',
+        registered ? reason : `"${path}" is no longer registered, but its directory may remain. ${reason}`,
+        { path, reason },
+        { cause: error },
+      )
+    }
+    // A Session must stop claiming a checkout that is gone.
+    for (const [sessionId, entered] of this.entered) {
+      if (entered.path === path) this.entered.delete(sessionId)
     }
     return { removed: path }
   }

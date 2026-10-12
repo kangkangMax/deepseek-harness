@@ -20,8 +20,14 @@ export interface ConsoleInjected {
   readonly list: (signal: AbortSignal) => Promise<ConsoleSnapshot>
   /** Clear stale registrations of one repository. */
   readonly prune: (repositoryId: string, signal: AbortSignal) => Promise<PruneOutcome>
-  /** Remove one worktree, discarding changes when `force`. */
-  readonly remove: (
+  /**
+   * Remove one worktree, discarding changes when `force`.
+   *
+   * `removeWorktree` rather than `remove`: a mounted namespace installs its
+   * methods on a service that already owns `remove`, and `$mount` refuses the
+   * shorter name before the entry ever activates.
+   */
+  readonly removeWorktree: (
     repositoryId: string,
     path: string,
     force: boolean,
@@ -46,8 +52,8 @@ export function createConsoleFace(ctx: Context): ConsoleInjected {
       if (!result.ok) throw result.error
       return result.value
     },
-    async remove(repositoryId, path, force, signal) {
-      const result = await ctx.remote.worktrees.remove(repositoryId, path, force, signal)
+    async removeWorktree(repositoryId, path, force, signal) {
+      const result = await ctx.remote.worktrees.removeWorktree(repositoryId, path, force, signal)
       if (!result.ok) throw result.error
       return result.value
     },
@@ -63,7 +69,11 @@ export function createConsoleFace(ctx: Context): ConsoleInjected {
  */
 export function describeFailure(error: unknown, fallback: string): string {
   if (error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string') {
-    return `${fallback} (${error.code})`
+    // The code names the fault; the wire message names which value caused it.
+    const message = 'message' in error && typeof error.message === 'string' && error.message.length > 0
+      ? `: ${error.message}`
+      : ''
+    return `${fallback} (${error.code})${message}`
   }
   return fallback
 }
