@@ -10,6 +10,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-workspace'
 import type { GitPort } from './git.ts'
 
 /** One repository the console can operate on. */

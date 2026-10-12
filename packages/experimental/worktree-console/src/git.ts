@@ -172,9 +172,12 @@ export function createGitPort(
     const bound = AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)])
     const program = await ctx.subprocess.resolveExecutable(config.gitCommand, undefined, bound)
     const command = [program, ...HARDENED, ...args]
+    // `confine` refuses the unconfined mode, so the already-unconfined branch
+    // returns the command as-is; re-stating `mode` narrows it to the confined
+    // modes the provider accepts.
     const argv = policy.mode === 'danger-full-access'
       ? command
-      : (await ctx.sandbox.confine(command, policy, bound)).argv
+      : (await ctx.sandbox.confine(command, { ...policy, mode: policy.mode }, bound)).argv
     const child = ctx.subprocess.spawn({
       argv,
       cwd,
