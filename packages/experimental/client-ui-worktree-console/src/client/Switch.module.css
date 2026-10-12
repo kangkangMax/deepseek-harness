@@ -1,0 +1,43 @@
+.wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--dsh-color-border-subtle);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsh-color-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip:hover:not(:disabled) {
+  background: var(--dsh-color-surface-hover);
+  color: var(--dsh-color-text-primary);
+}
+
+.chip[aria-pressed='true'] {
+  border-color: var(--dsh-color-accent);
+  color: var(--dsh-color-text-primary);
+}
+
+.chip:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.failure {
+  overflow: hidden;
+  color: var(--dsh-color-text-secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

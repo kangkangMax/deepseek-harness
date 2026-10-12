@@ -10,7 +10,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {
-  ConsoleSnapshot, PruneOutcome, RemoveOutcome,
+  ConsoleSnapshot, PruneOutcome, RemoveOutcome, WorktreeArmRequest, WorktreeSessionState,
 } from '@deepseek-ai/dsh-experimental-worktree-console/types'
 
 /** What the section asks the Host to do. */
@@ -65,4 +65,43 @@ export function describeFailure(error: unknown, fallback: string): string {
     return `${fallback} (${error.code})`
   }
   return fallback
+}
+
+/** What the composer switch asks the Host to do. */
+export interface SwitchInjected {
+  /** Arm one Session so its next step materializes a worktree first. */
+  readonly arm: (
+    sessionId: string,
+    request: WorktreeArmRequest,
+    signal: AbortSignal,
+  ) => Promise<WorktreeSessionState>
+  /** Drop the intent without materializing anything. */
+  readonly disarm: (sessionId: string, signal: AbortSignal) => Promise<WorktreeSessionState>
+  /** Read the intent and outcome for one Session. */
+  readonly state: (sessionId: string, signal: AbortSignal) => Promise<WorktreeSessionState>
+}
+
+/**
+ * Build the switch's face over the mounted Remote.
+ * @param ctx - client runtime owning `ctx.remote.worktrees`.
+ * @returns face whose methods reject with the Host's `RemoteError`.
+ */
+export function createSwitchFace(ctx: Context): SwitchInjected {
+  return {
+    async arm(sessionId, request, signal) {
+      const result = await ctx.remote.worktrees.arm(sessionId, request, signal)
+      if (!result.ok) throw result.error
+      return result.value
+    },
+    async disarm(sessionId, signal) {
+      const result = await ctx.remote.worktrees.disarm(sessionId, signal)
+      if (!result.ok) throw result.error
+      return result.value
+    },
+    async state(sessionId, signal) {
+      const result = await ctx.remote.worktrees.state(sessionId, signal)
+      if (!result.ok) throw result.error
+      return result.value
+    },
+  }
 }

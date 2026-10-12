@@ -48,6 +48,12 @@ export const en = {
   removeDone: 'Removed {path}.',
 
   failed: 'The request failed.',
+
+  switchLabel: 'Worktree',
+  switchHint: 'Create a Git worktree for this session and work in it',
+  switchUnavailable: 'Only an empty session can start in a worktree',
+  switchWorking: 'Working in {branch}',
+  switchArmFailed: 'Could not prepare a worktree: {reason}',
 }
 
 /** Chinese copy. */
@@ -93,4 +99,10 @@ export const zh: typeof en = {
   removeDone: '已删除 {path}。',
 
   failed: '请求失败。',
+
+  switchLabel: '工作树',
+  switchHint: '为本会话创建一个 Git 工作树并在其中工作',
+  switchUnavailable: '只有空白会话可以从工作树开始',
+  switchWorking: '正在 {branch} 中工作',
+  switchArmFailed: '无法准备工作树：{reason}',
 }
