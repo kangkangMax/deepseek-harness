@@ -14,6 +14,7 @@ import { promisify } from 'node:util'
 import { Context } from '@deepseek-ai/cordis'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
+import type { WorktreeRuntime } from '../src/enter.ts'
 import WorktreeConsole from '../src/index.ts'
 
 const execute = promisify(execFile)
@@ -83,9 +84,15 @@ export interface Harness {
  * Build a context over the real local filesystem and subprocess providers.
  * @param root - fixture directory; also the fallback filesystem working directory.
  * @param repositories - workspace paths the registry reports, in order.
+ * @param worktrees - the official worktree runtime to stand in for, when the
+ * test needs entering a worktree to be possible at all.
  * @returns the context and its recording sandbox.
  */
-export async function harness(root: string, repositories: readonly string[] = []): Promise<Harness> {
+export async function harness(
+  root: string,
+  repositories: readonly string[] = [],
+  worktrees?: WorktreeRuntime,
+): Promise<Harness> {
   const ctx = new Context()
   const sandbox: RecordingSandbox = {
     policies: [],
@@ -105,6 +112,8 @@ export async function harness(root: string, repositories: readonly string[] = []
       id: path, path, title: basename(path), createdAt: '', updatedAt: '', sessionIds: [],
     })),
   } as never)
+  // Left absent when the test needs the "official plugin not loaded" path.
+  if (worktrees !== undefined) ctx.provide('worktrees', worktrees as never)
   await ctx.plugin(WorktreeConsole, { gitCommand: 'git' })
   return { ctx, sandbox, root }
 }
