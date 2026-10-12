@@ -7,7 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
-import { createConsoleFace, createSwitchFace } from './console.ts'
+import { createConsoleFace, createSwitchFace } from './face.ts'
 import { WorktreeConsoleSection } from './Console.tsx'
 import { WorktreeSwitch } from './Switch.tsx'
 import { en, NS, zh } from './locales.ts'
@@ -20,7 +20,7 @@ function registerUi(ctx: Context): void {
   // belongs on the page it was handed.
   const section = createConsoleFace(ctx)
   ctx.slots.inject('plugins.detail.section', () => ctx.slots.register({
-    name: 'plugins.detail.section', locale: NS, inject: () => section,
+    name: 'plugins.detail.section', id: 'worktree-console', locale: NS, inject: () => section,
   }, WorktreeConsoleSection))
   // `conversation.input.left` is the composer tool row's own list seat, drawn
   // beside the plan and permission controls. Using it keeps this feature out of

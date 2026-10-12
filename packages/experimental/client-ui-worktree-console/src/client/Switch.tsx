@@ -15,7 +15,7 @@ import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-cli
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { WorktreeSessionState } from '@deepseek-ai/dsh-experimental-worktree-console/types'
-import { describeFailure, type SwitchInjected } from './console.ts'
+import { describeFailure, type SwitchInjected } from './face.ts'
 import { NS } from './locales.ts'
 import css from './Switch.module.css'
 

@@ -106,3 +106,13 @@ export const zh: typeof en = {
   switchWorking: '正在 {branch} 中工作',
   switchArmFailed: '无法准备工作树：{reason}',
 }
+
+/** Keys this plugin's dictionaries cover. */
+export type WorktreeConsoleKey = keyof typeof en
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap {
+    /** Worktree management section and composer switch copy. */
+    worktreeConsole: WorktreeConsoleKey
+  }
+}
