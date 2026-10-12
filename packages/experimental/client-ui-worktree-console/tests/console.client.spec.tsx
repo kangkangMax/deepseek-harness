@@ -138,4 +138,14 @@ describe('worktree management section', () => {
     await waitFor(() => { expect(prune).toHaveBeenCalledWith('wt', expect.anything()) })
     expect(await screen.findByText(en.pruneNone)).toBeTruthy()
   })
+
+  // The Plugins page draws a section's own chrome (title, icon, crumb — see
+  // ui-plugin-manager slot-contract), so the mark beside the title is the only
+  // place this section can carry an icon at all.
+  it('carries a branch glyph beside the section title', async () => {
+    renderSection()
+
+    const heading = await screen.findByRole('heading', { name: en.section })
+    expect(heading.querySelector('svg')).toBeTruthy()
+  })
 })

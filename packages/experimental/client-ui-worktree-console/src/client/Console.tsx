@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconBranchOutlineRegular, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type {
@@ -146,7 +146,10 @@ function Console(props: ConsoleProps) {
   return <section className={css.section}>
     <header className={css.header}>
       <div>
-        <h3 className={css.title}>{t('section')}</h3>
+        <h3 className={css.title}>
+          <IconBranchOutlineRegular className={css.titleGlyph} size={14} />
+          {t('section')}
+        </h3>
         <p className={css.hint}>{t('sectionHint')}</p>
       </div>
       <Button size="sm" disabled={busy} onClick={refresh}>{t('refresh')}</Button>

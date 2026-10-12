@@ -82,4 +82,13 @@ describe('composer worktree switch', () => {
 
     expect(await screen.findByText(/already exists/)).toBeTruthy()
   })
+
+  // The chip shares the tool row with the plan and permission controls, which
+  // both carry glyphs: a text-only button reads as a stray label.
+  it('carries a branch glyph beside the switch label', async () => {
+    renderSwitch()
+
+    const button = await screen.findByText(en.switchLabel)
+    expect(button.querySelector('svg')).toBeTruthy()
+  })
 })

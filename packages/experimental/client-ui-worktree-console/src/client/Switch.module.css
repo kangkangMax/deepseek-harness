@@ -8,6 +8,7 @@
 .chip {
   display: inline-flex;
   align-items: center;
+  gap: 5px;
   padding: 2px 8px;
   border: 1px solid var(--dsh-color-border-subtle);
   border-radius: 999px;
@@ -17,6 +18,17 @@
   font-size: 12px;
   white-space: nowrap;
   cursor: pointer;
+}
+
+/* The worktree glyph, dimmed while the switch is off and carrying the accent
+   once it is pressed — the same read the border and the label already give. */
+.glyph {
+  flex: none;
+  color: var(--dsh-color-text-secondary);
+}
+
+.chip[aria-pressed='true'] .glyph {
+  color: var(--dsh-color-accent);
 }
 
 .chip:hover:not(:disabled) {

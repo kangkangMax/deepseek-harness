@@ -2,6 +2,7 @@
   "name": "@deepseek-ai/dsh-experimental-worktree-console-bundle",
   "description": "Experimental worktree management page and composer worktree switch",
   "version": "0.2.1-alpha.2",
+  "icon": "./icon.svg",
   "publishConfig": {
     "access": "public"
   },
@@ -23,6 +24,7 @@
     "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "files": [
+    "icon.svg",
     "lib/index.js",
     "cordis.patch.yml",
     "lib/types/**/*.d.ts"
