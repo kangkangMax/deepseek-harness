@@ -15,7 +15,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type {
   RepositoryRows, WorktreeOrigin, WorktreeRow,
 } from '@deepseek-ai/dsh-experimental-worktree-console/types'
-import { describeFailure, type ConsoleInjected } from './console.ts'
+import { describeFailure, type ConsoleInjected } from './face.ts'
 import { NS } from './locales.ts'
 import css from './Console.module.css'
 
