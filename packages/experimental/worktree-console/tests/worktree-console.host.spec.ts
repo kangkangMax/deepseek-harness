@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { remoteErrorOf, remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
-import { commonAncestor } from '../src/git.ts'
 import { git, harness, repository, type Harness } from './harness.ts'
 
 let fixture: string | undefined
@@ -130,9 +129,9 @@ describe('worktree console Remote', () => {
 
   // A third-party pool may keep its checkouts outside the repository, and the
   // page shows them: refusing to remove one left a visible row no action could
-  // act on. The fence widens to the ancestor of the repository and the checkout
-  // — the one root that covers both writes a removal makes.
-  it('removes a checkout registered from outside the repository, under the widened fence', async () => {
+  // act on. Nothing here is fenced — the user asked for this — so the checkout's
+  // own location is not a boundary.
+  it('removes a checkout registered from outside the repository', async () => {
     fixture = await repository()
     // Git reports realpaths, and macOS hands out /var symlinks.
     const outside = await realpath(await mkdtemp(join(tmpdir(), 'dsh-console-outside-')))
@@ -147,13 +146,9 @@ describe('worktree console Remote', () => {
       expect(outcome).toEqual({ removed: outside })
       expect(await registered(fixture)).not.toContain(outside)
 
-      // The removal is the one call whose root is not the repository.
-      const removal = live.sandbox.policies.at(-1)
-      expect(removal?.mode).toBe('workspace-write')
-      expect(removal?.workspaceRoot).toBe(commonAncestor(fixture, outside))
-      expect(removal?.workspaceRoot).not.toBe(fixture)
-      // Every other command this service issues stays rooted at the repository.
-      expect(live.sandbox.policies.slice(0, -1).every(policy => policy.workspaceRoot === fixture)).toBe(true)
+      // The page is the caller, so nothing here is fenced: the sandbox seam is
+      // never consulted at all, which is what an unconfined policy records as.
+      expect(live.sandbox.policies).toEqual([])
     } finally {
       await rm(outside, { recursive: true, force: true })
     }

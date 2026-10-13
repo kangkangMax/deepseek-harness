@@ -1,7 +1,7 @@
 import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { commonAncestor, createGitPort, parseStatusPorcelain, parseWorktreeList, type GitConfig } from '../src/git.ts'
+import { createGitPort, parseStatusPorcelain, parseWorktreeList, type GitConfig } from '../src/git.ts'
 import { git, harness, repository, type Harness } from './harness.ts'
 
 const config: GitConfig = { timeoutMs: 30_000, graceMs: 2_000, maxOutputBytes: 4 * 1024 * 1024, gitCommand: 'git' }
@@ -101,24 +101,5 @@ describe('Git port over the real providers', () => {
 
     expect(entries).toHaveLength(2)
     expect(entries[1]?.prunable).toBe(true)
-  })
-})
-
-describe('fence widening', () => {
-  it('finds the ancestor two write targets share', () => {
-    // A third-party pool sits beside the repository, not inside it.
-    expect(commonAncestor('/w/repo', '/w/repo/.agents/worktrees/a')).toBe('/w/repo')
-    expect(commonAncestor('/w/repo', '/w/repo--worktrees/a')).toBe('/w')
-  })
-
-  // One segment apart is the shape a pool sibling produces: sharing more would
-  // mean widening past the parent that holds both.
-  it('never returns a root narrower than the shared parent', () => {
-    expect(commonAncestor('/w/repo', '/w/repo-2')).toBe('/w')
-    expect(commonAncestor('/a/b/c', '/a/b/d')).toBe('/a/b')
-  })
-
-  it('falls back to the filesystem root when nothing is shared', () => {
-    expect(commonAncestor('/w/repo', '/x/other')).toBe('/')
   })
 })

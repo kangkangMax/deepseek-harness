@@ -194,22 +194,21 @@ export class WorktreeConsole extends TypertRemoteService {
   }
 
   /**
-   * The fence root is the repository being operated on: the shared
-   * `.git/worktrees/<name>` state and the official `.agents/worktrees` pool both
-   * sit inside it, so `workspace-write` covers every read, prune, and removal
-   * this service issues for that repository.
+   * Unconfined, because every command behind it is a management-page action a
+   * person asked for. The fence exists to keep an *agent* inside the workspace
+   * it was given; here the caller is the user, the arguments are built in this
+   * package, and the paths come from Git's own `worktree list` rather than from
+   * the page. A checkout may legitimately sit in a pool outside the repository
+   * — a task space, an agent's own `.agents/worktree/…` — and fencing that only
+   * made the page refuse work the user explicitly confirmed.
    *
-   * A checkout from a pool outside the repository needs one root for two write
-   * targets — the shared metadata and the checkout directory — which is their
-   * common ancestor; the Git port widens to it for that command alone.
-   *
-   * The session plane is deliberately not consulted: this page owns no session,
-   * and the fail-safe deployment default (`read-only`) would make prune and
-   * `removeWorktree` impossible while adding no protection the root itself does
-   * not give.
+   * What an agent may do to a worktree is a different path entirely: it goes
+   * through the official runtime's own policy when the armed step creates one.
+   * @param repositoryRoot - canonical repository root; kept for the policy shape.
+   * @returns the unconfined execution policy this service runs its commands under.
    */
   private policyFor(repositoryRoot: string): SandboxExecutionPolicy {
-    return { mode: 'workspace-write', workspaceRoot: repositoryRoot }
+    return { mode: 'danger-full-access', workspaceRoot: repositoryRoot }
   }
 
   private async exists(path: string, signal: AbortSignal): Promise<boolean> {
