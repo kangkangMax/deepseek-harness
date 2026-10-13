@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-experimental-client-ui-worktree-console",
-  "description": "Worktree management section for the Plugins page and the composer worktree switch",
+  "description": "Worktree management section for the Plugins page and the composer worktree checkbox",
   "version": "0.2.1-alpha.2",
   "publishConfig": {
     "access": "public"

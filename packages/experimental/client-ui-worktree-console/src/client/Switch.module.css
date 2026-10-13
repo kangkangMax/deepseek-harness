@@ -5,45 +5,16 @@
   min-width: 0;
 }
 
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
-  border: 1px solid var(--dsh-color-border-subtle);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--dsh-color-text-secondary);
-  font: inherit;
+/* The composer tool row runs 12px; the primitive's own accent-colored
+   checkmark carries the on/off state, so nothing else has to. */
+.switch {
   font-size: 12px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-/* The worktree glyph, dimmed while the switch is off and carrying the accent
-   once it is pressed — the same read the border and the label already give. */
-.glyph {
-  flex: none;
+  line-height: 16px;
   color: var(--dsh-color-text-secondary);
 }
 
-.chip[aria-pressed='true'] .glyph {
-  color: var(--dsh-color-accent);
-}
-
-.chip:hover:not(:disabled) {
-  background: var(--dsh-color-surface-hover);
+.switch:has(input:checked) {
   color: var(--dsh-color-text-primary);
-}
-
-.chip[aria-pressed='true'] {
-  border-color: var(--dsh-color-accent);
-  color: var(--dsh-color-text-primary);
-}
-
-.chip:disabled {
-  cursor: default;
-  opacity: 0.6;
 }
 
 .failure {

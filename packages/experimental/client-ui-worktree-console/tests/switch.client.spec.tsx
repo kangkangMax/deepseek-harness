@@ -57,16 +57,16 @@ describe('composer worktree switch', () => {
   it('offers the switch to an empty session and arms it', async () => {
     const { arm } = renderSwitch()
 
-    fireEvent.click(await screen.findByText(en.switchLabel))
+    fireEvent.click(await screen.findByRole('checkbox'))
 
     await waitFor(() => { expect(arm).toHaveBeenCalledWith('session-1', {}, expect.anything()) })
-    await waitFor(() => { expect(screen.getByText(en.switchLabel).getAttribute('aria-pressed')).toBe('true') })
+    await waitFor(() => { expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(true) })
   })
 
   it('releases an armed session', async () => {
     const { disarm } = renderSwitch({ state: idle({ armed: true }), after: idle() })
 
-    fireEvent.click(await screen.findByText(en.switchLabel))
+    fireEvent.click(await screen.findByRole('checkbox'))
 
     await waitFor(() => { expect(disarm).toHaveBeenCalledWith('session-1', expect.anything()) })
   })
@@ -91,13 +91,16 @@ describe('composer worktree switch', () => {
     expect(await screen.findByText(/already exists/)).toBeTruthy()
   })
 
-  // The chip shares the tool row with the plan and permission controls, which
-  // both carry glyphs: a text-only button reads as a stray label.
-  it('carries a branch glyph beside the switch label', async () => {
+  // Arming is an intent the user sets and sees set, so the control is a real
+  // checkbox: a checked box says "on" at a glance, where a button that only
+  // tinted its border read as a label that happened to be clickable.
+  it('renders the intent as a labeled checkbox', async () => {
     renderSwitch()
 
-    const button = await screen.findByText(en.switchLabel)
-    expect(button.querySelector('svg')).toBeTruthy()
+    const box = await screen.findByRole('checkbox')
+    expect(box.getAttribute('type')).toBe('checkbox')
+    expect((box as HTMLInputElement).checked).toBe(false)
+    expect(screen.getByText(en.switchLabel)).toBeTruthy()
   })
 
   // The empty state means "not read yet", not "nothing to say": returning null
