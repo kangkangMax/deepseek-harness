@@ -51,8 +51,14 @@ export function WorktreeSwitch(props: WorktreeSwitchProps) {
   }, [sessionId])
 
   // Nothing is known yet, so nothing is claimed: a toggle that guesses would
-  // flicker between armed and not on every mount.
-  if (state === undefined) return null
+  // flicker between armed and not on every mount. A read that FAILED is not
+  // "nothing known" though — reporting it only past this return is what let an
+  // unreachable Host look exactly like a plugin that never loaded.
+  if (state === undefined) {
+    return failure === undefined ? null : <span className={css.wrap}>
+      <span className={css.failure} role="status">{describeFailure(failure, t('failed'))}</span>
+    </span>
+  }
 
   if (state.worktree !== null) {
     return <span className={css.wrap}>

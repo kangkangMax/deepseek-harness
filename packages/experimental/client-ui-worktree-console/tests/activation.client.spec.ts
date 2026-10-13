@@ -26,6 +26,11 @@ import { inject } from '../src/client/mount.ts'
 /** One endpoint the fake Connection answered, in call order. */
 const answered: string[] = []
 
+/** The composer seat's injected face, narrowed to the read this spec exercises. */
+interface SwitchFace {
+  readonly state: (sessionId: string, signal: AbortSignal) => Promise<unknown>
+}
+
 afterEach(() => { answered.length = 0 })
 
 /**
@@ -41,7 +46,9 @@ async function runtime(): Promise<Context> {
     rpc: {
       call: async (_path: string, endpoint: string) => {
         answered.push(endpoint)
-        return { ok: true, value: { removed: '/repos/dsh/.agents/worktrees/brave-otter' } }
+        return endpoint === 'worktrees/state'
+          ? { ok: true, value: { armed: false, worktree: null, failure: null } }
+          : { ok: true, value: { removed: '/repos/dsh/.agents/worktrees/brave-otter' } }
       },
       open: () => { throw new Error('no streams in this fixture') },
     },
@@ -82,6 +89,30 @@ it('serves the removal under the name the Host publishes', async () => {
 
   expect(outcome).toEqual({ ok: true, value: { removed: '/repos/dsh/.agents/worktrees/brave-otter' } })
   expect(answered).toEqual(['worktrees/removeWorktree'])
+
+  await ctx.fiber.dispose()
+})
+
+/**
+ * The composer seat reaches the Host through the scope the entry registered,
+ * not through the root context this spec holds: Cordis hands a plugin only the
+ * properties its own scope asked for, so a face reading `ctx.remote.worktrees`
+ * off a scope that never declared the namespace throws "Cannot get property
+ * ... without inject" on its first read — inside a render, where the only
+ * symptom the page shows is a chip that never appears.
+ */
+it('reaches the Host through the scope the composer seat registered', async () => {
+  const ctx = await runtime()
+  await ctx.plugin({ inject: [...inject], apply })
+
+  const entry = ctx.slots.entries('conversation.input.left')[0]
+  const face = (entry?.inject as unknown as () => SwitchFace)()
+  const state = await face.state('session-1', new AbortController().signal)
+
+  // Unwrapped: `state` answers with the Session's own shape, not the transport
+  // envelope the outcome-returning `removeWorktree` hands back.
+  expect(state).toEqual({ armed: false, worktree: null, failure: null })
+  expect(answered).toEqual(['worktrees/state'])
 
   await ctx.fiber.dispose()
 })
