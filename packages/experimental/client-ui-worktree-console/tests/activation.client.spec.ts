@@ -61,7 +61,7 @@ async function runtime(): Promise<Context> {
   // Both seats are declared by the packages that own them; the entry injects
   // into them rather than declaring them itself.
   ctx.slots.register({ name: 'root', children: {
-    'plugins.detail.section': { kind: 'list', scope: 'root' },
+    'settings.section': { kind: 'list', scope: 'root' },
     'conversation.input.left': { kind: 'list', scope: 'session' },
   } } as never, () => null)
   return ctx

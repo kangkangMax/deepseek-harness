@@ -1,17 +1,17 @@
 /**
- * The worktree management section of the Plugins page: the repositories of the
- * profile on the left, the selected repository's worktrees on the right, and
- * the two repairs — clear stale registrations, and remove one worktree.
+ * The worktree management page of the Settings panel: the repositories of the
+ * profile on the left, the selected repository's worktrees on the right, and the
+ * two repairs — clear stale registrations, and remove one worktree.
  *
- * The section renders on one bundle's page and returns nothing for every other
- * subject, so it never competes with a plugin's own configuration.
+ * It owns one Settings navigation row, so the page is where a user looks for it
+ * rather than at the bottom of a plugin's own detail page.
  * @module @deepseek-ai/dsh-experimental-client-ui-worktree-console/src/client/Console
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, IconBranchOutlineRegular, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {
   RepositoryRows, WorktreeOrigin, WorktreeRow,
 } from '@deepseek-ai/dsh-experimental-worktree-console/types'
@@ -19,12 +19,9 @@ import { describeFailure, type ConsoleInjected } from './face.ts'
 import { NS } from './locales.ts'
 import css from './Console.module.css'
 
-/** The bundle whose detail page carries this section. */
-export const BUNDLE_NAME = '@deepseek-ai/dsh-experimental-worktree-console-bundle'
-
-/** Owner props, dictionaries, and the Host face this section renders from. */
+/** Owner props, dictionaries, and the Host face this page renders from. */
 export type ConsoleProps =
-  & PropsRuntime<'plugins.detail.section'>
+  & PropsRuntime<'settings.section'>
   & PropsLocale<typeof NS>
   & InjectFace<ConsoleInjected>
 
@@ -43,10 +40,8 @@ function shortCommit(commit: string): string {
   return commit.slice(0, 8)
 }
 
-/** The section as the Plugins page registers it: silent for other subjects. */
-export function WorktreeConsoleSection(props: ConsoleProps) {
-  const { subject } = props
-  if (subject.kind !== 'bundle' || subject.pkg.name !== BUNDLE_NAME) return null
+/** The management page, as the Settings panel registers it. */
+export function WorktreeConsolePage(props: ConsoleProps) {
   return <Console {...props} />
 }
 
