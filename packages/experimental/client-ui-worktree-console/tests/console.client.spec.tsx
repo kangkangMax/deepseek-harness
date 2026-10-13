@@ -90,15 +90,31 @@ describe('worktree management page', () => {
     expect(removeWorktree).not.toHaveBeenCalled()
   })
 
-  it('removes with confirmation once the user accepts losing the changes', async () => {
+  // A removal that would lose a change asks for its own acknowledgement, so a
+  // dialog cannot be confirmed by muscle memory.
+  it('holds the confirm action until the loss is acknowledged', async () => {
     const { removeWorktree } = renderSection({ worktrees: [row(['fresh.txt'])] })
 
     fireEvent.click(await screen.findByText(en.remove))
-    fireEvent.click(await screen.findByText(en.removeConfirmAction))
+    const confirm = await screen.findByText(en.removeConfirmAction)
+    expect((confirm.closest('button') as HTMLButtonElement).disabled).toBe(true)
+    expect(removeWorktree).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(confirm)
 
     await waitFor(() => {
       expect(removeWorktree).toHaveBeenCalledWith('wt', WORKTREE, true, expect.anything())
     })
+  })
+
+  // A third-party pool is a location, not a lock: the Host widens its fence for
+  // that one command, so the row has to offer the action at all.
+  it('offers removal for a checkout registered outside the repository', async () => {
+    renderSection({ worktrees: [row([], { outsideRepository: true })] })
+
+    fireEvent.click(await screen.findByText(en.remove))
+    expect(await screen.findByText(en.removeConfirm)).toBeTruthy()
   })
 
   // R8: every row confirms before it runs. A clean checkout still gets the

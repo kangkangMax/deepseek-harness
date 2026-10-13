@@ -11,6 +11,29 @@ import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { SubprocessCollectedOutputs } from '@deepseek-ai/dsh-subprocess'
 
 /**
+ * The deepest directory containing both paths.
+ *
+ * A removal writes two trees at once — the shared `.git/worktrees/<name>`
+ * metadata under the repository, and the checkout directory itself — and one
+ * fence root has to contain both. A third-party pool may place its checkouts
+ * outside the repository, and refusing those left the page showing worktrees it
+ * would not touch, so the fence widens to the ancestor that covers both.
+ * @param left - first absolute path.
+ * @param right - second absolute path.
+ * @returns their common ancestor; `/` when they share no segment at all.
+ */
+export function commonAncestor(left: string, right: string): string {
+  const a = left.split('/')
+  const b = right.split('/')
+  const shared: string[] = []
+  for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
+    if (a[index] !== b[index]) break
+    shared.push(a[index] as string)
+  }
+  return shared.join('/') || '/'
+}
+
+/**
  * Selectors cleared before every call. An inherited `GIT_DIR` or
  * `GIT_CONFIG_PARAMETERS` would retarget the repository or inject
  * configuration, which matters most for the commands that delete things.
@@ -263,7 +286,12 @@ export function createGitPort(
     },
     async remove(repositoryRoot, worktreePath, force, signal) {
       const args = force ? ['worktree', 'remove', '--force', worktreePath] : ['worktree', 'remove', worktreePath]
-      await runGit(repositoryRoot, repositoryRoot, args, signal)
+      // The fence root is the ancestor of both write targets, not the
+      // repository alone: Git drops the registration under
+      // `<repositoryRoot>/.git/worktrees/<name>` and deletes the checkout,
+      // which a pool outside the repository keeps elsewhere. The command still
+      // runs in the repository, and its arguments are built here.
+      await runGit(commonAncestor(repositoryRoot, worktreePath), repositoryRoot, args, signal)
     },
   }
 }
