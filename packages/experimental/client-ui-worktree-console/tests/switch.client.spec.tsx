@@ -21,11 +21,19 @@ function idle(over: Partial<WorktreeSessionState> = {}): WorktreeSessionState {
 }
 
 function renderSwitch(
-  options: { blank?: boolean; state?: WorktreeSessionState; after?: WorktreeSessionState } = {},
+  options: {
+    blank?: boolean
+    state?: WorktreeSessionState
+    after?: WorktreeSessionState
+    rejects?: unknown
+  } = {},
 ) {
   const arm = vi.fn(async () => options.after ?? idle({ armed: true }))
   const disarm = vi.fn(async () => idle())
-  const state = vi.fn(async () => options.state ?? idle())
+  const state = vi.fn(async () => {
+    if (options.rejects !== undefined) throw options.rejects
+    return options.state ?? idle()
+  })
   const props = {
     sessionId: 'session-1',
     useSession: (selector: (snapshot: { blank: boolean }) => unknown) => selector({ blank: options.blank ?? true }),
@@ -90,5 +98,15 @@ describe('composer worktree switch', () => {
 
     const button = await screen.findByText(en.switchLabel)
     expect(button.querySelector('svg')).toBeTruthy()
+  })
+
+  // The empty state means "not read yet", not "nothing to say": returning null
+  // for it swallowed every failed read, so an unreachable Host looked exactly
+  // like a plugin that never loaded.
+  it('reports a failed read instead of rendering nothing', async () => {
+    const failure = Object.assign(new Error('worktrees/state is unknown'), { code: 'unknown-endpoint' })
+    renderSwitch({ rejects: failure })
+
+    expect(await screen.findByText(/unknown-endpoint/)).toBeTruthy()
   })
 })
