@@ -1,5 +1,5 @@
 ---
-description: "在 worktree-console Bundle 的详情页渲染工作树管理区块，并在 composer 工具行渲染工作树开关。自身不贡献任何模型上下文。"
+description: "在 worktree-console Bundle 的详情页渲染工作树管理区块，并在 composer 工具行渲染工作树复选框。自身不贡献任何模型上下文。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-在 worktree-console Bundle 的详情页渲染工作树管理区块，并在 composer 工具行渲染工作树开关。自身不贡献任何模型上下文。
+在 worktree-console Bundle 的详情页渲染工作树管理区块，并在 composer 工具行渲染工作树复选框。自身不贡献任何模型上下文。
 
 ## 目录
 
@@ -28,7 +28,7 @@ kind: "package-reference"
 | 席位 | 行为 |
 | --- | --- |
 | `plugins.detail.section`，id `worktree-console` | 主从管理区块，只出现在该 Bundle 自己的详情页上。 |
-| `conversation.input.left`，id `worktree` | composer 开关 —— 空白会话显示可点开关，已进入工作树的会话显示只读徽章。 |
+| `conversation.input.left`，id `worktree` | composer 复选框 —— 空白会话显示可勾选的控件，已进入工作树的会话显示只读徽章。 |
 
 两者都读 `worktrees` Remote；都不持有宿主没有的状态。
 
@@ -44,7 +44,7 @@ kind: "package-reference"
 <a id="model-experience"></a>
 ## 模型体验
 
-### Composer 工作树开关
+### Composer 工作树复选框
 
 #### 模型可见内容
 
@@ -62,6 +62,6 @@ kind: "package-reference"
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **开关只服务空白会话** —— 该规则由客户端不渲染开关来保证，宿主不再复核。
-- **徽章不会在同一会话内刷新** —— 宿主状态只在开关挂载时读取，因此同一会话稍后进入的工作树要等重新挂载才出现。
+- **复选框只服务空白会话** —— 该规则由客户端不渲染该控件来保证，宿主不再复核。
+- **徽章不会在同一会话内刷新** —— 宿主状态只在该控件挂载时读取，因此同一会话稍后进入的工作树要等重新挂载才出现。
 - **变更检查看不到被 ignore 的文件** —— 区块只报告已跟踪与未跟踪的改动，因此只有被 ignore 内容的检出会读作「干净」。

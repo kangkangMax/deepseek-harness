@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { IconBranchOutlineRegular, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Checkbox, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -68,30 +68,31 @@ export function WorktreeSwitch(props: WorktreeSwitchProps) {
 
   if (!blank) return null
 
-  const armed = state.armed
-  const toggle = (): void => {
+  // Arming is an intent the user sets and sees set: a checkbox says "this is
+  // on" the moment it is checked, where a button that only tints its border
+  // reads as a label that happens to be clickable.
+  const toggle = (checked: boolean): void => {
     setBusy(true)
     setFailure(undefined)
     const signal = new AbortController().signal
-    const next = armed
-      ? face.current.disarm(sessionId, signal)
-      : face.current.arm(sessionId, {}, signal)
-    void next.then(
+    const call = checked
+      ? face.current.arm(sessionId, {}, signal)
+      : face.current.disarm(sessionId, signal)
+    void call.then(
       (value) => { if (alive.current) setState(value) },
       (error: unknown) => { if (alive.current) setFailure(error) },
     ).finally(() => { if (alive.current) setBusy(false) })
   }
 
   return <span className={css.wrap}>
-    <button
-      type="button"
-      className={css.chip}
-      aria-pressed={armed}
-      aria-label={t('switchHint')}
-      title={t('switchHint')}
+    <Checkbox
+      className={css.switch}
+      checked={state.armed}
       disabled={busy}
-      onClick={toggle}
-    ><IconBranchOutlineRegular className={css.glyph} size={14} />{t('switchLabel')}</button>
+      label={t('switchLabel')}
+      title={t('switchHint')}
+      onChange={toggle}
+    />
     {state.failure !== null && <span className={css.failure} role="status">
       {t('switchArmFailed', { reason: state.failure })}
     </span>}
