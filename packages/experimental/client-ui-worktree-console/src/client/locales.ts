@@ -6,6 +6,7 @@ export const NS = 'worktreeConsole'
 
 /** English copy. */
 export const en = {
+  settingsNav: 'Worktrees',
   section: 'Worktrees',
   sectionHint: 'Every Git worktree registered in your workspaces, whichever tool created it.',
 
@@ -60,6 +61,7 @@ export const en = {
 
 /** Chinese copy. */
 export const zh: typeof en = {
+  settingsNav: '工作树',
   section: '工作树',
   sectionHint: '你的工作区里登记的全部 Git 工作树，无论由哪个工具创建。',
 

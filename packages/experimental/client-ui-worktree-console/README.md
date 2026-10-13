@@ -1,5 +1,5 @@
 ---
-description: "Render the worktree management section on the worktree-console bundle's page, and the worktree checkbox in the composer tool row. Contributes no model context of its own."
+description: "Provide the worktree management page in the Settings panel, and the worktree checkbox in the composer tool row. Contributes no model context of its own."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Render the worktree management section on the worktree-console bundle's page, and the worktree checkbox in the composer tool row. Contributes no model context of its own.
+Provide the worktree management page in the Settings panel, and the worktree checkbox in the composer tool row. Contributes no model context of its own.
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@ Mounted by `@deepseek-ai/dsh-experimental-worktree-console-bundle`; not mounted 
 
 | Seat | Behaviour |
 | --- | --- |
-| `plugins.detail.section`, id `worktree-console` | The master-detail section, on the bundle's own detail page and nowhere else. |
+| `settings.section`, id `worktree-console` | The management page, behind its own `Worktrees` row in the Settings navigation. |
 | `conversation.input.left`, id `worktree` | The composer checkbox — a box to tick for an empty Session, a read-only badge for a Session already in a worktree. |
 
 Both read the `worktrees` Remote; neither owns state the Host does not.
@@ -35,11 +35,11 @@ Both read the `worktrees` Remote; neither owns state the Host does not.
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The section decides from the page subject whether it belongs where it was rendered, returning nothing for every subject it does not own, so it never competes with a plugin's own configuration.
+The page owns one Settings navigation row, so it never competes with a plugin’s own configuration for space in a detail page.
 
 The Remote-facing functions live in their own module rather than inside the components. That keeps a browser spec able to run against a literal face instead of the generated Remote artifact, which only exists after a build.
 
-Neither component decides what the Host already decided. The section renders the arm flag and the entered checkout exactly as `state` reports them, and the checkbox renders nothing until the Host has answered — so a mount cannot flicker between armed and not, and a badge cannot report a checkout the Host never made.
+Neither component decides what the Host already decided. The page renders the arm flag and the entered checkout exactly as `state` reports them, and the checkbox renders nothing until the Host has answered — so a mount cannot flicker between armed and not, and a badge cannot report a checkout the Host never made.
 
 <a id="model-experience"></a>
 ## Model Experience
@@ -48,11 +48,11 @@ Neither component decides what the Host already decided. The section renders the
 
 #### What the model sees
 
-Nothing from this package. It renders controls in the browser; the model-visible change is the working-directory switch the Host makes when the armed step runs, which the model then sees as `Current working directory`.
+Nothing from this package. It renders controls in the browser; the model-visible change is the working-directory change the Host makes when the armed step runs, which the model then sees as `Current working directory`.
 
 #### Token effect
 
-None. The toggle, the badge and the management table never enter a model request.
+None. The checkbox, the badge and the management table never enter a model request.
 
 #### KV Cache effect
 
@@ -64,4 +64,4 @@ None. No model context is produced, so no cached prefix changes because of this 
 
 - **The checkbox reaches only empty Sessions** — the rule is enforced by the client not rendering the control, and the Host does not re-check it.
 - **The badge does not refresh within a Session** — the Host's state is read when the checkbox mounts, so a worktree entered later in the same Session appears only after a remount.
-- **The change check cannot see ignored files** — the section reports tracked and untracked changes, so a checkout whose only content is ignored reads as clean.
+- **The change check cannot see ignored files** — the page reports tracked and untracked changes, so a checkout whose only content is ignored reads as clean.

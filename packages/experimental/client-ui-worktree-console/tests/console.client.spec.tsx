@@ -2,12 +2,11 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ConsoleSnapshot } from '@deepseek-ai/dsh-experimental-worktree-console/types'
-import { WorktreeConsoleSection, type ConsoleProps } from '../src/client/Console.tsx'
+import { WorktreeConsolePage, type ConsoleProps } from '../src/client/Console.tsx'
 import { en } from '../src/client/locales.ts'
 
 afterEach(cleanup)
 
-const BUNDLE = '@deepseek-ai/dsh-experimental-worktree-console-bundle'
 const WORKTREE = '/repos/dsh/.agents/worktrees/brave-otter'
 
 /** Interpolate the real English dictionary, so the spec asserts shipped copy. */
@@ -39,29 +38,27 @@ function row(dirtyFiles: readonly string[], over: Partial<ConsoleSnapshot['repos
   }
 }
 
-function renderSection(options: { subject?: unknown; worktrees?: readonly ReturnType<typeof row>[] } = {}) {
+function renderSection(options: { worktrees?: readonly ReturnType<typeof row>[] } = {}) {
   const list = vi.fn(async () => snapshot(options.worktrees ?? [row([])]))
   const prune = vi.fn(async () => ({ pruned: [] }))
   const removeWorktree = vi.fn(async () => ({ removed: WORKTREE }))
   const props = {
-    subject: options.subject ?? { kind: 'bundle', pkg: { name: BUNDLE, installed: true, enabled: true, rows: [] } },
+    close: () => {},
     t: literalT(),
     list,
     prune,
     removeWorktree,
   } as unknown as ConsoleProps
-  render(<WorktreeConsoleSection {...props} />)
+  render(<WorktreeConsolePage {...props} />)
   return { list, prune, removeWorktree }
 }
 
-describe('worktree management section', () => {
-  it('renders nothing for a bundle it does not own', () => {
-    const { list } = renderSection({
-      subject: { kind: 'bundle', pkg: { name: '@deepseek-ai/dsh-experimental-voice-input-bundle', installed: true, enabled: true, rows: [] } },
-    })
+describe('worktree management page', () => {
+  it('reads its repositories from the Host on mount', async () => {
+    const { list } = renderSection()
 
-    expect(screen.queryByText(en.section)).toBeNull()
-    expect(list).not.toHaveBeenCalled()
+    expect(await screen.findByText('brave-otter')).toBeTruthy()
+    expect(list).toHaveBeenCalled()
   })
 
   it('lists the worktree with the convention that created it', async () => {

@@ -1,5 +1,5 @@
 ---
-description: "在 worktree-console Bundle 的详情页渲染工作树管理区块，并在 composer 工具行渲染工作树复选框。自身不贡献任何模型上下文。"
+description: "在设置面板提供工作树管理页，并在 composer 工具行渲染工作树复选框。自身不贡献任何模型上下文。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-在 worktree-console Bundle 的详情页渲染工作树管理区块，并在 composer 工具行渲染工作树复选框。自身不贡献任何模型上下文。
+在设置面板提供工作树管理页，并在 composer 工具行渲染工作树复选框。自身不贡献任何模型上下文。
 
 ## 目录
 
@@ -27,7 +27,7 @@ kind: "package-reference"
 
 | 席位 | 行为 |
 | --- | --- |
-| `plugins.detail.section`，id `worktree-console` | 主从管理区块，只出现在该 Bundle 自己的详情页上。 |
+| `settings.section`，id `worktree-console` | 设置面板左侧的「工作树」导航项，点开即管理页。 |
 | `conversation.input.left`，id `worktree` | composer 复选框 —— 空白会话显示可勾选的控件，已进入工作树的会话显示只读徽章。 |
 
 两者都读 `worktrees` Remote；都不持有宿主没有的状态。
@@ -35,11 +35,11 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-区块自己从页面 subject 判断是否属于被渲染的位置，对不是自己的 subject 返回空，因此从不与插件自身的配置争夺版面。
+管理页独占设置面板的一个导航项，因此不与任何插件的配置页混在一起。
 
 面向 Remote 的函数单独成模块而非写在组件里。这样浏览器 spec 可以对着一个字面 face 运行，而不必 import 只在构建后才存在的 Remote 生成物。
 
-两个组件都不替宿主做决定。区块按 `state` 报告的原文渲染武装标志与已进入的检出；开关在宿主回答之前不渲染 —— 因此挂载不会在「已武装/未武装」之间闪，徽章也不会报告一个宿主从未创建过的检出。
+两个组件都不替宿主做决定。页面按 `state` 报告的原文渲染武装标志与已进入的检出；复选框在宿主回答之前不渲染 —— 因此挂载不会在「已武装/未武装」之间闪，徽章也不会报告一个宿主从未创建过的检出。
 
 <a id="model-experience"></a>
 ## 模型体验
@@ -64,4 +64,4 @@ kind: "package-reference"
 
 - **复选框只服务空白会话** —— 该规则由客户端不渲染该控件来保证，宿主不再复核。
 - **徽章不会在同一会话内刷新** —— 宿主状态只在该控件挂载时读取，因此同一会话稍后进入的工作树要等重新挂载才出现。
-- **变更检查看不到被 ignore 的文件** —— 区块只报告已跟踪与未跟踪的改动，因此只有被 ignore 内容的检出会读作「干净」。
+- **变更检查看不到被 ignore 的文件** —— 页面只报告已跟踪与未跟踪的改动，因此只有被 ignore 内容的检出会读作「干净」。

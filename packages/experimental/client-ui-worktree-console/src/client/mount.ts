@@ -5,10 +5,10 @@ import type {} from '@deepseek-ai/dsh-experimental-worktree-console/remote'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { createConsoleFace, createSwitchFace } from './face.ts'
-import { WorktreeConsoleSection } from './Console.tsx'
+import { WorktreeConsolePage } from './Console.tsx'
 import { WorktreeSwitch } from './Switch.tsx'
 import { en, NS, zh } from './locales.ts'
 
@@ -16,12 +16,19 @@ export const inject = ['remote', 'slots', 'locale']
 
 function registerUi(ctx: Context): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }))
-  // The section draws its own heading and decides from the subject whether it
-  // belongs on the page it was handed.
-  const section = createConsoleFace(ctx)
-  ctx.slots.inject('plugins.detail.section', () => ctx.slots.register({
-    name: 'plugins.detail.section', id: 'worktree-console', locale: NS, inject: () => section,
-  }, WorktreeConsoleSection))
+  const t = ctx.locale.bind(NS)
+  // The management page owns one Settings navigation row, which puts it where
+  // a user opens this panel to configure things — a section at the bottom of a
+  // bundle's own Plugins page was reachable but not findable.
+  const console = createConsoleFace(ctx)
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: 'worktree-console',
+    order: 20,
+    label: () => t('settingsNav'),
+    locale: NS,
+    inject: () => console,
+  }, WorktreeConsolePage))
   // `conversation.input.left` is the composer tool row's own list seat, drawn
   // beside the plan and permission controls. Using it keeps this feature out of
   // the conversation package entirely: no new slot, no edited skeleton.
