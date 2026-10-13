@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, IconBranchOutlineRegular, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconBranchOutlineRegular, Modal, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {
@@ -60,6 +60,8 @@ function Console(props: ConsoleProps) {
   const [repositories, setRepositories] = useState<readonly RepositoryRows[] | undefined>(undefined)
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined)
   const [pending, setPending] = useState<PendingRemoval | undefined>(undefined)
+  // A destructive confirm is gated on its own acknowledgement, reset per target.
+  const [acknowledged, setAcknowledged] = useState(false)
   const [failure, setFailure] = useState<unknown>(undefined)
   const [notice, setNotice] = useState<string | undefined>(undefined)
   const [busy, setBusy] = useState(false)
@@ -128,6 +130,7 @@ function Console(props: ConsoleProps) {
     // re-reads the working tree before acting, so a row that went dirty since
     // this page was read is refused rather than deleted unseen.
     setNotice(undefined)
+    setAcknowledged(false)
     setPending({
       repositoryId,
       path: row.path,
@@ -137,6 +140,10 @@ function Console(props: ConsoleProps) {
   }
 
   const selected = repositories?.find(row => row.id === selectedId)
+
+  // Losing a change is not the same as deleting a directory: the dialog only
+  // asks for an acknowledgement when something is actually at risk.
+  const atRisk = pending !== undefined && (pending.files.length > 0 || pending.ignoredCount > 0)
 
   return <section className={css.section}>
     <header className={css.header}>
@@ -212,7 +219,7 @@ function Console(props: ConsoleProps) {
                     <td>
                       {row.locked && <Tag tone="neutral">{t('locked')}</Tag>}
                       {row.outsideRepository && <Tag tone="neutral">{t('outsideRepository')}</Tag>}
-                      {!row.stale && !row.locked && !row.outsideRepository && <Button
+                      {!row.stale && !row.locked && <Button
                         size="sm"
                         disabled={busy}
                         onClick={() => { requestRemoval(selected.id, row) }}
@@ -225,8 +232,26 @@ function Console(props: ConsoleProps) {
       </div>
     </div>}
 
-    {pending !== undefined && <div className={css.confirm} role="alertdialog" aria-label={t('removeConfirm')}>
-      <strong>{t('removeConfirm')}</strong>
+    {pending !== undefined && <Modal
+      open
+      onClose={() => { setPending(undefined) }}
+      title={t('removeConfirm')}
+      closeLabel={t('removeCancel')}
+      footer={(
+        <>
+          <Button variant="outline" disabled={busy} onClick={() => { setPending(undefined) }}>
+            {t('removeCancel')}
+          </Button>
+          <Button
+            variant="primary"
+            disabled={busy || (atRisk && !acknowledged)}
+            onClick={() => { void submitRemoval(pending, atRisk) }}
+          >
+            {t('removeConfirmAction')}
+          </Button>
+        </>
+      )}
+    >
       <p className={css.hint}>{pending.path} — {t('removeConfirmHint')}</p>
       {pending.files.length > 0 && <>
         <p className={css.hint}>{t('removeLostFiles')}</p>
@@ -237,16 +262,16 @@ function Console(props: ConsoleProps) {
       {pending.ignoredCount > 0 && <p className={css.hint}>
         {t('removeLostIgnored', { count: pending.ignoredCount })}
       </p>}
-      <div className={css.confirmActions}>
-        <Button
-          size="sm"
+      {atRisk && <label className={css.acknowledge}>
+        <input
+          type="checkbox"
+          checked={acknowledged}
           disabled={busy}
-          onClick={() => { void submitRemoval(pending, pending.files.length > 0 || pending.ignoredCount > 0) }}
-        >
-          {t('removeConfirmAction')}
-        </Button>
-        <Button size="sm" disabled={busy} onClick={() => { setPending(undefined) }}>{t('removeCancel')}</Button>
-      </div>
-    </div>}
+          data-modal-autofocus
+          onChange={(event) => { setAcknowledged(event.currentTarget.checked) }}
+        />
+        <span>{t('removeAcknowledge')}</span>
+      </label>}
+    </Modal>}
   </section>
 }

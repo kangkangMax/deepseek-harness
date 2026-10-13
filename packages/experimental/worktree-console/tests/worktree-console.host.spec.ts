@@ -1,8 +1,9 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { remoteErrorOf, remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
+import { commonAncestor } from '../src/git.ts'
 import { git, harness, repository, type Harness } from './harness.ts'
 
 let fixture: string | undefined
@@ -127,12 +128,14 @@ describe('worktree console Remote', () => {
     expect(await registered(fixture)).toContain(one)
   })
 
-  // The fence root is the repository, so a checkout from a pool outside it
-  // cannot be removed here. The refusal names that instead of letting Git fail
-  // inside the sandbox with a message about paths.
-  it('refuses a checkout registered from outside the repository', async () => {
+  // A third-party pool may keep its checkouts outside the repository, and the
+  // page shows them: refusing to remove one left a visible row no action could
+  // act on. The fence widens to the ancestor of the repository and the checkout
+  // — the one root that covers both writes a removal makes.
+  it('removes a checkout registered from outside the repository, under the widened fence', async () => {
     fixture = await repository()
-    const outside = await mkdtemp(join(tmpdir(), 'dsh-console-outside-'))
+    // Git reports realpaths, and macOS hands out /var symlinks.
+    const outside = await realpath(await mkdtemp(join(tmpdir(), 'dsh-console-outside-')))
     try {
       await git(fixture, 'worktree', 'add', '-b', 'elsewhere', outside)
       live = await harness(fixture, [fixture])
@@ -140,9 +143,17 @@ describe('worktree console Remote', () => {
       const rows = (await live.ctx.worktreeConsole.list(signal())).repositories[0]?.worktrees ?? []
       expect(rows[0]?.outsideRepository).toBe(true)
 
-      const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, outside, true, signal())
-        .catch((error: unknown) => error)
-      expect(remoteErrorOf(failure)).toMatchObject({ code: 'worktree/outside-repository', details: { path: outside } })
+      const outcome = await live.ctx.worktreeConsole.removeWorktree(fixture, outside, true, signal())
+      expect(outcome).toEqual({ removed: outside })
+      expect(await registered(fixture)).not.toContain(outside)
+
+      // The removal is the one call whose root is not the repository.
+      const removal = live.sandbox.policies.at(-1)
+      expect(removal?.mode).toBe('workspace-write')
+      expect(removal?.workspaceRoot).toBe(commonAncestor(fixture, outside))
+      expect(removal?.workspaceRoot).not.toBe(fixture)
+      // Every other command this service issues stays rooted at the repository.
+      expect(live.sandbox.policies.slice(0, -1).every(policy => policy.workspaceRoot === fixture)).toBe(true)
     } finally {
       await rm(outside, { recursive: true, force: true })
     }

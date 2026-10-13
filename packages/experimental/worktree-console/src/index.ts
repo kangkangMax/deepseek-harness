@@ -43,8 +43,6 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'worktree/dirty': { readonly path: string; readonly files: readonly string[] }
     /** The registration has no checkout directory left; pruning is the repair. */
     'worktree/stale': { readonly path: string }
-    /** The checkout is registered from a pool outside the repository, so this fence cannot cover its removal. */
-    'worktree/outside-repository': { readonly path: string; readonly repositoryRoot: string }
     /** Git refused the removal. */
     'worktree/remove-failed': { readonly path: string; readonly reason: string }
     /**
@@ -198,13 +196,12 @@ export class WorktreeConsole extends TypertRemoteService {
   /**
    * The fence root is the repository being operated on: the shared
    * `.git/worktrees/<name>` state and the official `.agents/worktrees` pool both
-   * sit inside it, so `workspace-write` covers every command this service
-   * issues for that repository.
+   * sit inside it, so `workspace-write` covers every read, prune, and removal
+   * this service issues for that repository.
    *
-   * A checkout registered from a pool *outside* the repository is therefore
-   * visible here but not repairable here — `removeWorktree` refuses it by name
-   * rather than letting Git fail inside the sandbox. Widening this to cover such
-   * a checkout would need a policy that carries more than one root.
+   * A checkout from a pool outside the repository needs one root for two write
+   * targets — the shared metadata and the checkout directory — which is their
+   * common ancestor; the Git port widens to it for that command alone.
    *
    * The session plane is deliberately not consulted: this page owns no session,
    * and the fail-safe deployment default (`read-only`) would make prune and
@@ -307,16 +304,6 @@ export class WorktreeConsole extends TypertRemoteService {
   async removeWorktree(repositoryId: string, path: string, force: boolean, signal: AbortSignal): Promise<RemoveOutcome> {
     signal.throwIfAborted()
     const repository = await this.requireRepository(repositoryId, signal)
-    // The fence root is this repository, so a checkout registered from a pool
-    // outside it cannot be removed here. Refuse by name instead of letting Git
-    // fail inside the sandbox with a message about paths.
-    if (!path.startsWith(`${repository.path}/`)) {
-      throw new RemoteError(
-        'worktree/outside-repository',
-        `"${path}" is outside "${repository.path}"`,
-        { path, repositoryRoot: repository.path },
-      )
-    }
     const entry = (await this.git.list(repository.path, signal)).find(candidate => candidate.path === path)
     if (entry === undefined) {
       throw new RemoteError('worktree/not-found', `no worktree at "${path}"`, { repositoryId, path })

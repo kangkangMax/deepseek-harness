@@ -143,17 +143,13 @@
   overflow-wrap: anywhere;
 }
 
-.confirm {
+/* The dialog owns its own surface; this styles the acknowledgement inside it. */
+.acknowledge {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid var(--dsh-color-border-subtle);
-  border-radius: 6px;
-  background: var(--dsh-color-surface-subtle);
-}
-
-.confirmActions {
-  display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--dsh-color-text-secondary);
+  cursor: pointer;
 }
