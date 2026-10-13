@@ -68,6 +68,6 @@ The directory change appends context after retained history rather than replacin
 <a id="known-limitations-and-deferred-work"></a>
 
 - **Source is inferred, not recorded** — a plugin that changes its default landing spot makes its checkouts report as `manual`. The page shows a visible unknown rather than misattributing them, and no repair depends on the label.
-- **A removal widens the fence to the ancestor of both write targets** — Git drops the registration under the repository and deletes the checkout, which a pool outside it (`dsh-worktree-space` task spaces, for example) keeps elsewhere, so that one command is fenced on their common ancestor.
+- **The page's own git commands are unconfined** — they are actions a person asked for, with arguments built in this package and paths read back from `git worktree list`, so the sandbox seam is never consulted; what an *agent* may do to a worktree is a separate path with its own policy.
 - **Ignored files are not part of the change check** — `git status --porcelain` reports tracked and untracked changes only, so a checkout whose only content is ignored reads as clean.
 - **Session state is process-local** — the armed intent and the entered checkout live in memory and do not survive a Host restart.

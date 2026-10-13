@@ -11,29 +11,6 @@ import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { SubprocessCollectedOutputs } from '@deepseek-ai/dsh-subprocess'
 
 /**
- * The deepest directory containing both paths.
- *
- * A removal writes two trees at once — the shared `.git/worktrees/<name>`
- * metadata under the repository, and the checkout directory itself — and one
- * fence root has to contain both. A third-party pool may place its checkouts
- * outside the repository, and refusing those left the page showing worktrees it
- * would not touch, so the fence widens to the ancestor that covers both.
- * @param left - first absolute path.
- * @param right - second absolute path.
- * @returns their common ancestor; `/` when they share no segment at all.
- */
-export function commonAncestor(left: string, right: string): string {
-  const a = left.split('/')
-  const b = right.split('/')
-  const shared: string[] = []
-  for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
-    if (a[index] !== b[index]) break
-    shared.push(a[index] as string)
-  }
-  return shared.join('/') || '/'
-}
-
-/**
  * Selectors cleared before every call. An inherited `GIT_DIR` or
  * `GIT_CONFIG_PARAMETERS` would retarget the repository or inject
  * configuration, which matters most for the commands that delete things.
@@ -198,10 +175,18 @@ export function parseStatusPorcelain(stdout: string): { changed: readonly string
 
 /**
  * Build the port over one context's subprocess and sandbox providers.
+ *
+ * Every command here is a management-page action a person asked for: the
+ * arguments are built here, and the paths come from Git's own
+ * `worktree list` rather than from the page. The policy the caller supplies is
+ * therefore unconfined — a checkout may legitimately live in a pool outside the
+ * repository, and fencing that would only make the page refuse work the user
+ * explicitly requested. What an *agent* may do to a worktree is a different
+ * path, owned by the plugin that creates them.
  * @param ctx - context supplying both providers in the same execution world.
  * @param config - resolved resource limits and the git executable.
- * @param policyFor - the confinement policy for one repository root.
- * @returns a port whose every command is bounded, cancellable, and confined.
+ * @param policyFor - the execution policy for one repository root.
+ * @returns a port whose every command is bounded and cancellable.
  */
 export function createGitPort(
   ctx: Context,
@@ -286,12 +271,7 @@ export function createGitPort(
     },
     async remove(repositoryRoot, worktreePath, force, signal) {
       const args = force ? ['worktree', 'remove', '--force', worktreePath] : ['worktree', 'remove', worktreePath]
-      // The fence root is the ancestor of both write targets, not the
-      // repository alone: Git drops the registration under
-      // `<repositoryRoot>/.git/worktrees/<name>` and deletes the checkout,
-      // which a pool outside the repository keeps elsewhere. The command still
-      // runs in the repository, and its arguments are built here.
-      await runGit(commonAncestor(repositoryRoot, worktreePath), repositoryRoot, args, signal)
+      await runGit(repositoryRoot, repositoryRoot, args, signal)
     },
   }
 }
