@@ -36,7 +36,7 @@ describe('real Loader composition', () => {
         // The Service's own inject list, plus the Gateway binding key it is
         // constructed through. Only presence matters here; the behavior of
         // each provider is covered by the port and console specs.
-        for (const service of ['typert', 'subprocess', 'sandbox', 'fs', 'workspaceRegistry']) {
+        for (const service of ['typert', 'subprocess', 'sandbox', 'fs', 'workspaceRegistry', 'remoteAccess']) {
           ctx.provide(service as never, {} as never)
         }
       },

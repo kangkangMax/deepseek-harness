@@ -76,11 +76,48 @@ export interface RecordingSandbox {
   confine: (argv: readonly string[], policy: RecordedPolicy) => Promise<{ argv: string[] }>
 }
 
+/** One resource the console asked access control about. */
+export interface CheckedResource {
+  /** Resource kind the call named. */
+  readonly kind: string
+  /** Identity of the resource. */
+  readonly id: string
+}
+
+/** The access seam, recorded rather than decided. */
+export interface RecordingAccess {
+  /** Every resource the console filtered on, in call order. */
+  readonly checked: CheckedResource[]
+  /**
+   * Whether one resource is visible to the caller. The owner path answers true
+   * for every resource, so a spec that exercises filtering replaces this.
+   */
+  allows: (resource: CheckedResource) => boolean
+}
+
 /** A context, its recording sandbox, and the fixture directory to clean up. */
 export interface Harness {
   readonly ctx: Context
   readonly sandbox: RecordingSandbox
+  readonly access: RecordingAccess
   readonly root: string
+}
+
+/**
+ * What the Session-facing stand-ins answer.
+ *
+ * Both are list- or read-shaped seams over services this suite does not own: the
+ * console only asks which Session an id names and which directory that Session
+ * works in.
+ */
+export interface SessionFixture {
+  /**
+   * Ids the Session store holds. Omitted means every id resolves, which is what
+   * the arm path relied on before a Session service was read at all.
+   */
+  readonly known?: readonly string[]
+  /** Directory the directory service reports; defaults to the fixture root. */
+  readonly directory?: string
 }
 
 /**
@@ -89,12 +126,14 @@ export interface Harness {
  * @param repositories - workspace paths the registry reports, in order.
  * @param worktrees - the official worktree runtime to stand in for, when the
  * test needs entering a worktree to be possible at all.
+ * @param sessions - which ids and which directory the Session stand-ins answer.
  * @returns the context and its recording sandbox.
  */
 export async function harness(
   root: string,
   repositories: readonly string[] = [],
   worktrees?: Pick<WorktreeService, 'create'>,
+  sessions: SessionFixture = {},
 ): Promise<Harness> {
   const ctx = new Context()
   const sandbox: RecordingSandbox = {
@@ -108,6 +147,20 @@ export async function harness(
   await ctx.plugin(LocalSubprocessRuntime)
   ctx.provide('sandbox', sandbox as never)
   ctx.provide('typert', {} as never)
+  // Access control is the Gateway's per-call decision; this suite exercises the
+  // owner path, where every check answers true, plus the list filter it feeds.
+  // The record lives in the provider, not in `allows`: a spec replaces the
+  // decision without also silencing the record.
+  const access: RecordingAccess = {
+    checked: [],
+    allows: () => true,
+  }
+  ctx.provide('remoteAccess', {
+    allows: (resource: CheckedResource) => {
+      access.checked.push(resource)
+      return access.allows(resource)
+    },
+  } as never)
   // The registry is a real service with durable storage; this suite only reads
   // `list()`, so a list-shaped stand-in is the honest seam.
   ctx.provide('workspaceRegistry', {
@@ -115,8 +168,16 @@ export async function harness(
       id: path, path, title: basename(path), createdAt: '', updatedAt: '', sessionIds: [],
     })),
   } as never)
+  ctx.provide('sessions', {
+    get: (id: string) => sessions.known === undefined || sessions.known.includes(id) ? { id } : undefined,
+  } as never)
+  // The directory read is the one call the branch picker makes, so the seam is
+  // the answer it returns rather than the projection machinery behind it.
+  ctx.provide('workingDirectory', {
+    get: () => sessions.directory ?? root,
+  } as never)
   // Left absent when the test needs the "official plugin not loaded" path.
   if (worktrees !== undefined) ctx.provide('worktrees', worktrees as never)
   await ctx.plugin(WorktreeConsole, { gitCommand: 'git' })
-  return { ctx, sandbox, root }
+  return { ctx, sandbox, access, root }
 }

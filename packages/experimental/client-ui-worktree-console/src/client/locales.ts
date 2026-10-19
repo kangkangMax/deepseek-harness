@@ -58,6 +58,13 @@ export const en = {
   switchHint: 'Create a Git worktree for this session and work in it',
   switchWorking: 'Working in {branch}',
   switchArmFailed: 'Could not prepare a worktree: {reason}',
+  switchBase: 'Base',
+  switchBaseHint: 'Branch the new worktree starts from',
+  switchBaseHead: 'Current HEAD',
+  switchBaseLocal: 'Local branches',
+  switchBaseRemote: 'Remote branches',
+  switchBaseCurrent: '{branch} (current)',
+  switchBaseNone: 'This session’s directory is not a Git repository.',
 }
 
 /** Chinese copy. */
@@ -113,6 +120,13 @@ export const zh: typeof en = {
   switchHint: '为本会话创建一个 Git 工作树并在其中工作',
   switchWorking: '正在 {branch} 中工作',
   switchArmFailed: '无法准备工作树：{reason}',
+  switchBase: '基线',
+  switchBaseHint: '新工作树从哪个分支拉出',
+  switchBaseHead: '当前 HEAD',
+  switchBaseLocal: '本地分支',
+  switchBaseRemote: '远程分支',
+  switchBaseCurrent: '{branch}（当前）',
+  switchBaseNone: '本会话目录不在 Git 仓库中。',
 }
 
 /** Keys this plugin's dictionaries cover. */

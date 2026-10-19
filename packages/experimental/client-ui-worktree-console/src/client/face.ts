@@ -11,7 +11,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {
-  ConsoleSnapshot, PruneOutcome, RemoveOutcome, WorktreeArmRequest, WorktreeSessionState,
+  BranchChoices, ConsoleSnapshot, PruneOutcome, RemoveOutcome, WorktreeArmRequest, WorktreeSessionState,
 } from '@deepseek-ai/dsh-experimental-worktree-console/types'
 
 /** What the section asks the Host to do. */
@@ -90,6 +90,8 @@ export interface SwitchInjected {
   readonly disarm: (sessionId: string, signal: AbortSignal) => Promise<WorktreeSessionState>
   /** Read the intent and outcome for one Session. */
   readonly state: (sessionId: string, signal: AbortSignal) => Promise<WorktreeSessionState>
+  /** Read the base branches a blank Session's worktree could start from. */
+  readonly branches: (sessionId: string, signal: AbortSignal) => Promise<BranchChoices>
 }
 
 /**
@@ -111,6 +113,11 @@ export function createSwitchFace(ctx: Context): SwitchInjected {
     },
     async state(sessionId, signal) {
       const result = await ctx.remote.worktrees.state(sessionId, signal)
+      if (!result.ok) throw result.error
+      return result.value
+    },
+    async branches(sessionId, signal) {
+      const result = await ctx.remote.worktrees.branches(sessionId, signal)
       if (!result.ok) throw result.error
       return result.value
     },

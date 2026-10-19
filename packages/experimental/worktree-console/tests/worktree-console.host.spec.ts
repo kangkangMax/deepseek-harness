@@ -51,6 +51,29 @@ describe('worktree console Remote', () => {
     expect((await live.ctx.worktreeConsole.list(signal())).repositories[0]?.worktrees).toEqual([])
   })
 
+  /**
+   * A read that spans repositories names no single resource, so the Gateway
+   * decides it on `global` and the method filters later. A caller bound to one
+   * workspace must therefore lose the others here — the filter is the only
+   * place that decision exists, and the Host still refuses a direct `prune` or
+   * removal outside those bindings.
+   */
+  it('drops the repositories the caller may not see, and asks once per repository', async () => {
+    // Both fixtures live under one tracked directory so the cleanup above takes
+    // them together; `repository()` would otherwise leave the second behind.
+    fixture = await mkdtemp(join(tmpdir(), 'dsh-console-access-'))
+    const visible = await repository(fixture)
+    const hidden = await repository(fixture)
+    live = await harness(visible, [visible, hidden])
+
+    live.access.allows = resource => resource.id !== hidden
+    const snapshot = await live.ctx.worktreeConsole.list(signal())
+
+    expect(snapshot.repositories.map(row => row.path)).toEqual([visible])
+    expect(live.access.checked.map(resource => resource.id)).toEqual([visible, hidden])
+    expect(live.access.checked.every(resource => resource.kind === 'workspace')).toBe(true)
+  })
+
   it('skips a registered workspace that is not a repository root', async () => {
     fixture = await repository()
     const container = await mkdtemp(join(tmpdir(), 'dsh-console-container-'))
@@ -188,6 +211,67 @@ describe('worktree console Remote', () => {
   })
 })
 
+describe('worktree console branch choices', () => {
+  it('reads the Session directory’s repository and marks the branch it has out', async () => {
+    fixture = await repository()
+    await git(fixture, 'branch', 'feature/one')
+    live = await harness(fixture, [fixture])
+
+    expect(await live.ctx.worktreeConsole.branches('session-1', signal())).toEqual({
+      repositoryRoot: fixture,
+      branches: [
+        { name: 'feature/one', kind: 'local', current: false },
+        { name: 'main', kind: 'local', current: true },
+      ],
+    })
+  })
+
+  // A remote-tracking ref is the only way to start from a revision the local
+  // branch has not caught up to, so the picker offers it beside the local one
+  // rather than hiding it behind the branch of the same name.
+  it('offers remote-tracking refs beside local branches', async () => {
+    fixture = await repository()
+    const head = await git(fixture, 'rev-parse', 'HEAD')
+    await git(fixture, 'remote', 'add', 'origin', 'https://example.invalid/dsh.git')
+    await git(fixture, 'update-ref', 'refs/remotes/origin/main', head)
+    await git(fixture, 'update-ref', 'refs/remotes/origin/release/1.0', head)
+    live = await harness(fixture, [fixture])
+
+    expect(await live.ctx.worktreeConsole.branches('session-1', signal())).toEqual({
+      repositoryRoot: fixture,
+      branches: [
+        { name: 'main', kind: 'local', current: true },
+        { name: 'origin/main', kind: 'remote', current: false },
+        { name: 'origin/release/1.0', kind: 'remote', current: false },
+      ],
+    })
+  })
+
+  // The picker has to be able to say "there is nothing to choose here" instead
+  // of showing an empty list, which reads as a repository with no branches.
+  it('reports no repository for a directory that is outside every one', async () => {
+    fixture = await repository()
+    const elsewhere = await mkdtemp(join(tmpdir(), 'dsh-console-outside-'))
+    try {
+      live = await harness(fixture, [fixture], undefined, { directory: elsewhere })
+
+      expect(await live.ctx.worktreeConsole.branches('session-1', signal()))
+        .toEqual({ repositoryRoot: null, branches: [] })
+    } finally {
+      await rm(elsewhere, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects an unknown Session id', async () => {
+    fixture = await repository()
+    live = await harness(fixture, [fixture], undefined, { known: [] })
+
+    const failure = await live.ctx.worktreeConsole.branches('session-1', signal()).catch((error: unknown) => error)
+
+    expect(remoteErrorOf(failure)).toMatchObject({ code: 'worktree/unknown-session', details: { sessionId: 'session-1' } })
+  })
+})
+
 // A namespace service owns a surface of its own, and `$mount` installs the
 // Remote methods onto it. A method named `remove` landed on the service's own
 // `remove` and the mount refused the whole contribution — which surfaced as an
@@ -210,7 +294,7 @@ describe('worktree console wire names', () => {
 
     const wire = remoteMethods(live.ctx.worktreeConsole).map(marker => marker.exportName ?? marker.method)
 
-    expect([...wire].sort()).toEqual(['arm', 'disarm', 'list', 'prune', 'removeWorktree', 'state'])
+    expect([...wire].sort()).toEqual(['arm', 'branches', 'disarm', 'list', 'prune', 'removeWorktree', 'state'])
     expect(wire.filter(name => RESERVED_WIRE_NAMES.has(name))).toEqual([])
   })
 })

@@ -1,7 +1,7 @@
 import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createGitPort, parseStatusPorcelain, parseWorktreeList, type GitConfig } from '../src/git.ts'
+import { createGitPort, parseBranchList, parseStatusPorcelain, parseWorktreeList, type GitConfig } from '../src/git.ts'
 import { git, harness, repository, type Harness } from './harness.ts'
 
 const config: GitConfig = { timeoutMs: 30_000, graceMs: 2_000, maxOutputBytes: 4 * 1024 * 1024, gitCommand: 'git' }
@@ -45,6 +45,30 @@ describe('porcelain grammars', () => {
       { path: '/repos/dsh/.agents/worktrees/gone', head: 'ccc333', branch: 'refs/heads/lost', bare: false, locked: false, prunable: true },
       { path: '/repos/dsh/.agents/worktrees/detached', head: 'ddd444', branch: null, bare: false, locked: true, prunable: false },
     ])
+  })
+
+  it('reads local branches and remote-tracking refs, and skips a remote’s HEAD pointer', () => {
+    expect(parseBranchList([
+      'refs/heads/feature/one\0 \0',
+      'refs/heads/main\0*\0',
+      'refs/remotes/origin/HEAD\0 \0refs/remotes/origin/main',
+      'refs/remotes/origin/main\0 \0',
+      'refs/remotes/origin/release/1.0\0 \0',
+      '',
+    ].join('\n'))).toEqual([
+      { name: 'feature/one', kind: 'local', current: false },
+      { name: 'main', kind: 'local', current: true },
+      // `origin/main` keeps its remote prefix: the runtime resolves the ref, and
+      // a bare `main` would name the local branch instead.
+      { name: 'origin/main', kind: 'remote', current: false },
+      { name: 'origin/release/1.0', kind: 'remote', current: false },
+    ])
+  })
+
+  // A repository with no commit yet has no branch to offer, and the picker has
+  // to read that as "nothing to list" rather than as a malformed record.
+  it('reads nothing from output with no records', () => {
+    expect(parseBranchList('')).toEqual([])
   })
 
   it('separates changed paths from ignored ones and reads a rename destination', () => {
@@ -101,5 +125,29 @@ describe('Git port over the real providers', () => {
 
     expect(entries).toHaveLength(2)
     expect(entries[1]?.prunable).toBe(true)
+  })
+
+  it('lists the local branches and marks the one the repository has out', async () => {
+    fixture = await repository()
+    await git(fixture, 'branch', 'feature/one')
+    live = await harness(fixture)
+    const port = createGitPort(live.ctx, config, root => ({ mode: 'workspace-write', workspaceRoot: root }))
+
+    expect(await port.branches(fixture, new AbortController().signal)).toEqual([
+      { name: 'feature/one', kind: 'local', current: false },
+      { name: 'main', kind: 'local', current: true },
+    ])
+  })
+
+  // A branch checked out in a worktree is still a base a new branch may start
+  // from, so the list must not drop it just because another checkout holds it.
+  it('keeps a branch that a worktree has checked out', async () => {
+    fixture = await repository()
+    await git(fixture, 'worktree', 'add', '-b', 'feature/one', join(fixture, '.agents', 'worktrees', 'one'))
+    live = await harness(fixture)
+    const port = createGitPort(live.ctx, config, root => ({ mode: 'workspace-write', workspaceRoot: root }))
+
+    expect((await port.branches(fixture, new AbortController().signal)).map(option => option.name))
+      .toEqual(['feature/one', 'main'])
   })
 })

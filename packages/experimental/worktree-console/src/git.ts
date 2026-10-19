@@ -9,6 +9,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { SubprocessCollectedOutputs } from '@deepseek-ai/dsh-subprocess'
+import type { BranchOption } from './types.ts'
 
 /**
  * Selectors cleared before every call. An inherited `GIT_DIR` or
@@ -106,6 +107,14 @@ export interface GitPort {
    * @returns after the checkout and its registration are gone.
    */
   readonly remove: (repositoryRoot: string, worktreePath: string, force: boolean, signal: AbortSignal) => Promise<void>
+  /**
+   * @param repositoryRoot - canonical repository root.
+   * @returns the repository's local branches and remote-tracking refs, with the
+   * local branch its own checkout has out marked. The result is the page's row
+   * shape rather than a porcelain record: unlike `worktree list`,
+   * `for-each-ref` needs no re-interpretation.
+   */
+  readonly branches: (repositoryRoot: string, signal: AbortSignal) => Promise<readonly BranchOption[]>
 }
 
 /**
@@ -171,6 +180,42 @@ export function parseStatusPorcelain(stdout: string): { changed: readonly string
     else changed.push(path)
   }
   return { changed, ignored }
+}
+
+/**
+ * Parse `git for-each-ref --format=%(refname)%00%(HEAD)%00%(symref) refs/heads refs/remotes`.
+ *
+ * The full ref name rather than `%(refname:short)`, because the namespace is
+ * what tells a local branch from a remote-tracking ref and a short name has
+ * already dropped it. `%(symref)` is non-empty on `refs/remotes/<remote>/HEAD`,
+ * a pointer at that remote's default branch: offering it would list the same
+ * revision twice, under a name no one typed. `%(HEAD)` is `*` on the ref the
+ * repository's own checkout has out and a space on every other, so one call
+ * answers both "which revisions exist" and "which one is the default". The NUL
+ * between the fields is what keeps a branch name containing the separator out
+ * of the next column.
+ * @param stdout - command output.
+ * @returns one option per ref, in the order Git printed them. A remote-tracking
+ * ref keeps its remote prefix, so `from` gets `origin/main` and not `main`.
+ */
+export function parseBranchList(stdout: string): readonly BranchOption[] {
+  const heads = 'refs/heads/'
+  const remotes = 'refs/remotes/'
+  const branches: BranchOption[] = []
+  for (const line of stdout.replaceAll('\r\n', '\n').split('\n')) {
+    if (line.length === 0) continue
+    const [refname, marker, symref] = line.split('\0')
+    if (refname === undefined || refname.length === 0) continue
+    if (symref !== undefined && symref.length > 0) continue
+    const local = refname.startsWith(heads)
+    if (!local && !refname.startsWith(remotes)) continue
+    branches.push({
+      name: local ? refname.slice(heads.length) : refname.slice(remotes.length),
+      kind: local ? 'local' : 'remote',
+      current: marker === '*',
+    })
+  }
+  return branches
 }
 
 /**
@@ -272,6 +317,19 @@ export function createGitPort(
     async remove(repositoryRoot, worktreePath, force, signal) {
       const args = force ? ['worktree', 'remove', '--force', worktreePath] : ['worktree', 'remove', worktreePath]
       await runGit(repositoryRoot, repositoryRoot, args, signal)
+    },
+    async branches(repositoryRoot, signal) {
+      // `--sort=refname` fixes the order the picker shows, so the list does not
+      // reshuffle with whatever Git's default ordering happens to be; over both
+      // namespaces it also puts `refs/heads/…` ahead of `refs/remotes/…`, which
+      // is the order the picker groups them in anyway.
+      const { stdout } = await runGit(
+        repositoryRoot,
+        repositoryRoot,
+        ['for-each-ref', '--sort=refname', '--format=%(refname)%00%(HEAD)%00%(symref)', 'refs/heads', 'refs/remotes'],
+        signal,
+      )
+      return parseBranchList(stdout)
     },
   }
 }

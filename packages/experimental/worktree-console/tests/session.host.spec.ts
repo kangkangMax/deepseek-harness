@@ -108,4 +108,17 @@ describe('entering a worktree on send', () => {
 
     expect(create).not.toHaveBeenCalled()
   })
+
+  // The base the picker offers is only real if it reaches the runtime: the
+  // switch stores the choice, and this is the call that spends it.
+  it('carries the chosen base branch into the runtime', async () => {
+    const create = vi.fn(async () => entered())
+    live = await harness(tmpdir(), [], { create })
+    const subject = agent()
+    await live.ctx.worktreeConsole.arm(SESSION, { from: 'feature/one' }, signal())
+
+    await firePreStep(live, subject)
+
+    expect(create).toHaveBeenCalledWith(subject, { from: 'feature/one' }, expect.anything())
+  })
 })

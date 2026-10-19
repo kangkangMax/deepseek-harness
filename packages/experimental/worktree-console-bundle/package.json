@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-experimental-worktree-console-bundle",
   "description": "Experimental worktree management page and composer worktree checkbox",
-  "version": "0.2.1-alpha.2",
+  "version": "0.2.1-rc.2",
   "icon": "./icon.svg",
   "publishConfig": {
     "access": "public"

@@ -28,9 +28,11 @@ kind: "package-reference"
 | 席位 | 行为 |
 | --- | --- |
 | `settings.section`，id `worktree-console` | 设置面板左侧的「工作树」导航项，点开即管理页。 |
-| `conversation.input.left`，id `worktree` | composer 复选框 —— 空白会话显示可勾选的控件，已进入工作树的会话显示只读徽章。 |
+| `conversation.input.left`，id `worktree` | composer 复选框 —— 空白会话显示可勾选的控件，勾选后旁边出现基点分支选择器，已进入工作树的会话显示只读徽章。 |
 
 两者都读 `worktrees` Remote；都不持有宿主没有的状态。
+
+基点选择器随勾选一起出现，而不是提前出现。未勾选时没有任何东西需要限定；一个等在旁边的基点控件会被读成「必须先设对」的前置设置。这也让从未武装过的会话（也就是大多数会话）根本不去读分支列表。
 
 <a id="understand-the-implementation"></a>
 ## 理解实现

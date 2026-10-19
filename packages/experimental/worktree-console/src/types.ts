@@ -84,8 +84,43 @@ export interface RemoveOutcome {
 export interface WorktreeArmRequest {
   /** Branch name, also the checkout directory name; omission generates one. */
   readonly name?: string
-  /** Local revision to start from; omission selects HEAD. */
+  /** Revision to resolve before creation: a local branch, a remote-tracking ref, a tag, or a commit; omission selects HEAD. */
   readonly from?: string
+}
+
+/** Which namespace a base revision lives in, and so which heading the picker lists it under. */
+export type BranchKind = 'local' | 'remote'
+
+/** One locally available revision a blank Session's worktree can start from. */
+export interface BranchOption {
+  /**
+   * Ref name the official runtime resolves: a local branch, or a
+   * remote-tracking ref such as `origin/main`.
+   */
+  readonly name: string
+  /** Whether the ref is a local branch or a remote-tracking one. */
+  readonly kind: BranchKind
+  /** The repository's own checkout has this branch out, so it is the default base. Always false for a remote-tracking ref. */
+  readonly current: boolean
+}
+
+/** The base revisions the composer switch offers for one Session. */
+export interface BranchChoices {
+  /**
+   * Canonical root of the repository the Session's directory sits in, or null
+   * when that directory is outside every repository. Null means there is no
+   * base to choose, which the switch reports rather than covering up with an
+   * empty list.
+   */
+  readonly repositoryRoot: string | null
+  /**
+   * Local branches first, then remote-tracking refs, each namespace in
+   * ref-name order; empty when the root is null.
+   *
+   * A remote-tracking ref resolves from the local object store, so one is only
+   * as fresh as the last fetch: the picker reads refs, it never fetches.
+   */
+  readonly branches: readonly BranchOption[]
 }
 
 /** The checkout a Session was moved into. */

@@ -12,14 +12,17 @@
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import type {} from '@deepseek-ai/dsh-api-remote-access'
 import type {} from '@deepseek-ai/dsh-fs'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
-import type {} from '@deepseek-ai/dsh-workspace'
+import type { SessionId, Session } from '@deepseek-ai/dsh-session'
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
+import type { WorkingDirectoryService } from '@deepseek-ai/dsh-working-directory'
 import { worktreeRuntime } from './enter.ts'
 import { createGitPort, type GitPort } from './git.ts'
 import { classifyOrigin } from './sources.ts'
 import type {
-  ConsoleSnapshot, EnteredWorktree, PruneOutcome, RemoveOutcome, RepositoryRows,
+  BranchChoices, ConsoleSnapshot, EnteredWorktree, PruneOutcome, RemoveOutcome, RepositoryRows,
   WorktreeArmRequest, WorktreeRow, WorktreeSessionState,
 } from './types.ts'
 import { listRepositories, type RepositoryRef } from './workspaces.ts'
@@ -76,9 +79,41 @@ function shortBranch(branch: string | null): string | null {
   return branch.startsWith(heads) ? branch.slice(heads.length) : branch
 }
 
+/**
+ * Name the Session one call speaks for.
+ *
+ * Declared as a `@Remote` resource reader so the Gateway resolves the call's
+ * resource before it dispatches: every Remote method is under access control,
+ * and a method that names no resource is judged against `global` alone, which
+ * refuses a non-owner even when a Session-scoped binding is what granted it.
+ *
+ * The brand is a compile-time type, so this asserts it over the wire string
+ * rather than calling `SessionId()`: that helper lives in the Session service's
+ * entry, and importing it for a no-op would pull the whole service into this
+ * bundle.
+ * @param sessionId - Session identity the wire carried.
+ * @returns the same identity, typed for the `session` resource kind.
+ */
+function sessionResource(sessionId: string): SessionId {
+  return sessionId as SessionId
+}
+
+/**
+ * Name the registered workspace one call speaks for.
+ *
+ * A repository row is a workspace record, so the `workspace` kind is the
+ * resource a prune or a removal touches; the path and the `force` flag are
+ * arguments, not identities, and are never part of the resource.
+ * @param repositoryId - workspace registry identity the wire carried.
+ * @returns the same identity, typed for the `workspace` resource kind.
+ */
+function workspaceResource(repositoryId: string): WorkspaceId {
+  return repositoryId as WorkspaceId
+}
+
 /** Lists and repairs Git worktrees across the registered workspaces. */
 export class WorktreeConsole extends TypertRemoteService {
-  static inject = ['typert', 'subprocess', 'sandbox', 'fs', 'workspaceRegistry']
+  static inject = ['typert', 'subprocess', 'sandbox', 'fs', 'workspaceRegistry', 'remoteAccess']
 
   static Config: z<Config> = z.object({
     timeoutMs: z.natural().min(1_000).default(30_000),
@@ -140,13 +175,59 @@ export class WorktreeConsole extends TypertRemoteService {
   }
 
   /**
+   * Read the Session a wire id names.
+   * @param sessionId - id from the wire.
+   * @returns the Session, or undefined when the deployment carries no Session
+   * service — the id is then taken on trust, which is what keeps this plugin
+   * loadable in a composition that does not include one.
+   * @throws when a Session service is present and does not hold the id.
+   */
+  private sessionOf(sessionId: string): Session | undefined {
+    const sessions = this.ctx.get('sessions') as { get(id: string): Session | undefined } | undefined
+    if (sessions === undefined) return undefined
+    const session = sessions.get(sessionId)
+    if (session === undefined) {
+      throw new RemoteError('worktree/unknown-session', `no Session "${sessionId}"`, { sessionId })
+    }
+    return session
+  }
+
+  /**
+   * Read the branches a blank Session's worktree could start from: the
+   * repository's local branches and its remote-tracking refs, with the local
+   * branch its own checkout has out marked.
+   *
+   * The Session's own directory decides the repository, because that is where
+   * the armed step creates the checkout: offering another repository's branches
+   * would let the user pin a revision the official runtime then fails to
+   * resolve, and the step would be refused for a reason the page caused.
+   * @param sessionId - Session the composer switch belongs to.
+   * @param signal - cancellation.
+   * @returns the repository root and its branches; a null root means the
+   * Session's directory is outside every repository, so there is no base.
+   */
+  @Remote({ name: 'branches', resources: { session: sessionResource } })
+  async branches(sessionId: string, signal: AbortSignal): Promise<BranchChoices> {
+    signal.throwIfAborted()
+    const session = this.sessionOf(sessionId)
+    // Read rather than inject: this is a picker's read, and a composition
+    // without the directory service gets an empty choice instead of a plugin
+    // that refuses to activate.
+    const working = this.ctx.get('workingDirectory') as Pick<WorkingDirectoryService, 'get'> | undefined
+    if (session === undefined || working === undefined) return { repositoryRoot: null, branches: [] }
+    const repositoryRoot = await this.git.topLevel(working.get(session), signal)
+    if (repositoryRoot === null) return { repositoryRoot: null, branches: [] }
+    return { repositoryRoot, branches: await this.git.branches(repositoryRoot, signal) }
+  }
+
+  /**
    * Arm one Session so its next step materializes a worktree first.
    * @param sessionId - Session the composer switch belongs to.
    * @param request - optional branch name and start revision.
    * @param signal - cancellation.
    * @returns this Session's intent and outcome.
    */
-  @Remote
+  @Remote({ name: 'arm', resources: { session: sessionResource } })
   async arm(sessionId: string, request: WorktreeArmRequest, signal: AbortSignal): Promise<WorktreeSessionState> {
     signal.throwIfAborted()
     if (worktreeRuntime(this.ctx) === undefined) {
@@ -159,10 +240,7 @@ export class WorktreeConsole extends TypertRemoteService {
     // The client offers the switch only for an empty Session, but the Host does
     // not take that on trust from the wire: a stale tab or a replay must not be
     // able to move a Session that is already under way.
-    const sessions = this.ctx.get('sessions') as { get(id: string): unknown } | undefined
-    if (sessions !== undefined && sessions.get(sessionId) === undefined) {
-      throw new RemoteError('worktree/unknown-session', `no Session "${sessionId}"`, { sessionId })
-    }
+    this.sessionOf(sessionId)
     this.armed.set(sessionId, request)
     this.failures.delete(sessionId)
     return this.stateOf(sessionId)
@@ -174,7 +252,7 @@ export class WorktreeConsole extends TypertRemoteService {
    * @param signal - cancellation.
    * @returns this Session's intent and outcome.
    */
-  @Remote
+  @Remote({ name: 'disarm', resources: { session: sessionResource } })
   async disarm(sessionId: string, signal: AbortSignal): Promise<WorktreeSessionState> {
     signal.throwIfAborted()
     this.armed.delete(sessionId)
@@ -187,7 +265,7 @@ export class WorktreeConsole extends TypertRemoteService {
    * @param signal - cancellation.
    * @returns the armed flag, the checkout once one exists, and any failure.
    */
-  @Remote
+  @Remote({ name: 'state', resources: { session: sessionResource } })
   async state(sessionId: string, signal: AbortSignal): Promise<WorktreeSessionState> {
     signal.throwIfAborted()
     return this.stateOf(sessionId)
@@ -253,15 +331,20 @@ export class WorktreeConsole extends TypertRemoteService {
   }
 
   /**
-   * Read every worktree of every registered repository.
+   * Read every worktree of every registered repository this caller may see.
    * @param signal - cancellation of the registry read and the per-repository probes.
-   * @returns one row set per repository, in registry order.
+   * @returns one row set per visible repository, in registry order.
    */
   @Remote
   async list(signal: AbortSignal): Promise<ConsoleSnapshot> {
     signal.throwIfAborted()
     const repositories: RepositoryRows[] = []
     for (const repository of await listRepositories(this.ctx, this.git, signal)) {
+      // A read that spans resources names none, so the Gateway decided it on
+      // `global`; each row is then filtered on its own repository. A caller
+      // bound to one workspace keeps that one and loses the rest, and the
+      // Host still refuses a direct `prune` or removal outside its bindings.
+      if (!this.ctx.remoteAccess.allows({ kind: 'workspace', id: workspaceResource(repository.id) })) continue
       repositories.push({ ...repository, worktrees: await this.readWorktrees(repository, signal) })
     }
     return { repositories }
@@ -274,7 +357,7 @@ export class WorktreeConsole extends TypertRemoteService {
    * @param signal - cancellation.
    * @returns the checkout paths whose registrations disappeared.
    */
-  @Remote
+  @Remote({ name: 'prune', resources: { workspace: workspaceResource } })
   async prune(repositoryId: string, signal: AbortSignal): Promise<PruneOutcome> {
     signal.throwIfAborted()
     const repository = await this.requireRepository(repositoryId, signal)
@@ -299,7 +382,7 @@ export class WorktreeConsole extends TypertRemoteService {
    * @param signal - cancellation.
    * @returns the removed checkout path.
    */
-  @Remote
+  @Remote({ name: 'removeWorktree', resources: { workspace: workspaceResource } })
   async removeWorktree(repositoryId: string, path: string, force: boolean, signal: AbortSignal): Promise<RemoveOutcome> {
     signal.throwIfAborted()
     const repository = await this.requireRepository(repositoryId, signal)

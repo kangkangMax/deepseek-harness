@@ -28,9 +28,11 @@ Mounted by `@deepseek-ai/dsh-experimental-worktree-console-bundle`; not mounted 
 | Seat | Behaviour |
 | --- | --- |
 | `settings.section`, id `worktree-console` | The management page, behind its own `Worktrees` row in the Settings navigation. |
-| `conversation.input.left`, id `worktree` | The composer checkbox — a box to tick for an empty Session, a read-only badge for a Session already in a worktree. |
+| `conversation.input.left`, id `worktree` | The composer checkbox — a box to tick for an empty Session, then a base picker beside it, and a read-only badge for a Session already in a worktree. |
 
 Both read the `worktrees` Remote; neither owns state the Host does not.
+
+The base picker arrives with the tick, not before it. An unchecked box has nothing to qualify yet, and a base waiting beside it would read as a setting to get right before the checkbox means anything. It also keeps the branch list unread for every conversation that never arms one, which is most of them.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation

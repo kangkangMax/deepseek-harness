@@ -3,6 +3,14 @@ import type { Context } from '@deepseek-ai/cordis'
 import worktreeConsoleRemote from '@deepseek-ai/dsh-experimental-worktree-console/remote'
 import { mountWorktreeConsole } from './mount.ts'
 
+// Re-exported rather than only imported: this entry's declaration is what a
+// consumer program reads, and a value import of the generated artifact is
+// elided from it. Without the explicit re-export the `worktrees` namespace
+// augmentation never reaches a caller that typechecks against the built entry,
+// which surfaces as "Property 'worktrees' does not exist on type
+// 'ClientRemote'" even though the runtime mount succeeds.
+export type {} from '@deepseek-ai/dsh-experimental-worktree-console/remote'
+
 export { inject } from './mount.ts'
 
 /**

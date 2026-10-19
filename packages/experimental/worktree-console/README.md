@@ -32,8 +32,11 @@ Mount alongside `subprocess`, `sandbox`, `fs`, and `workspaceRegistry`. Every me
 | `removeWorktree(repositoryId, path, force)` | Remove one worktree and its registration. Refuses a dirty checkout unless `force` is set. |
 | `arm(sessionId, request)` / `disarm(sessionId)` | Set or drop an intent so the Session's next step materializes a worktree first. |
 | `state(sessionId)` | The arm flag, the checkout once one exists, and the last failure. |
+| `branches(sessionId)` | The Session directory's repository and its local branches, for the composer's base picker. A null repository means that directory is outside every repository. |
 
 `arm` needs the official worktree runtime to be loaded; without it, `arm` fails with `worktree/unavailable` and the rest of the page keeps working.
+
+`branches` reports the repository of the Session's *current* directory, because that is where the armed step creates the checkout. It reads `sessions` and `workingDirectory` rather than injecting them, so a composition without either reports no repository instead of failing to activate.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation

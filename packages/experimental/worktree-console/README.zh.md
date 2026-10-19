@@ -32,8 +32,11 @@ kind: "package-reference"
 | `removeWorktree(repositoryId, path, force)` | 删除一个工作树及其登记。未提交改动存在时除非 `force` 否则拒绝。 |
 | `arm(sessionId, request)` / `disarm(sessionId)` | 设置或放弃一个意图，使该会话的下一个 step 先物化工作树。 |
 | `state(sessionId)` | 武装标志、已存在的检出，以及上一次失败。 |
+| `branches(sessionId)` | 会话目录所属的仓库及其本地分支，供 composer 的基点选择器使用。仓库为 null 表示该目录不在任何仓库内。 |
 
 `arm` 需要官方 worktree 运行时已加载；缺席时 `arm` 以 `worktree/unavailable` 失败，页面其余部分照常工作。
+
+`branches` 报告的是会话**当前**目录所属的仓库，因为武装后的 step 正是在那里创建工作树。它以读取而非注入的方式使用 `sessions` 与 `workingDirectory`，因此缺少任一的组合会报告「没有仓库」，而不是直接无法激活。
 
 <a id="understand-the-implementation"></a>
 ## 理解实现

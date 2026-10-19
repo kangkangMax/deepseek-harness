@@ -24,3 +24,42 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* The base picker is the checkbox's sidebar: it appears once the intent is
+   set, so it reads as a refinement of a decision already made rather than a
+   second decision to make first. */
+.base {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  max-width: 200px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.base:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.base:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.baseLabel {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.baseValue {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
