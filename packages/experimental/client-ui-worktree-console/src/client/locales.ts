@@ -37,7 +37,10 @@ export const en = {
   staleCardHint:
     'Directory no longer exists — removing this row only drops the registration, not any files.',
   locked: 'locked',
-  outsideRepository: 'outside repo',
+  // Short because it sits in the branch cell, and the widest tag there is the
+  // pixel the branch name does not get. The full phrase is the row's title.
+  outsideRepository: 'outside',
+  outsideRepositoryHint: 'Registered from a directory outside the repository.',
 
   copyPath: 'Copy path',
   copied: 'Copied',
@@ -46,7 +49,11 @@ export const en = {
   refresh: 'Refresh',
   loading: 'Loading worktrees…',
 
-  prune: 'Clean up stale registrations',
+  // Short because it shares a row with the repository name, and a button long
+  // enough to wrap crowds that name out of the heading it belongs to. The full
+  // sentence is the button's title.
+  prune: 'Clean up',
+  pruneHint: 'Drop registrations whose checkout directory no longer exists.',
   pruneNone: 'Nothing was stale.',
   pruneDone: 'Cleared {count}.',
 
@@ -72,6 +79,10 @@ export const en = {
   switchBaseLocal: 'Local branches',
   switchBaseRemote: 'Remote branches',
   switchBaseCurrent: '{branch} (current)',
+  switchBaseSearch: 'Search branches',
+  switchBaseSearchClear: 'Clear the search',
+  switchBaseNoMatch: 'No branch matches that search.',
+  switchBaseNoChoices: 'This repository has no branches yet.',
   switchBaseNone: 'This session’s directory is not a Git repository.',
 }
 
@@ -107,7 +118,8 @@ export const zh: typeof en = {
   staleHint: '登记还在，但检出目录已不存在。',
   staleCardHint: '目录已不存在 —— 删除这一行只会移除登记，不会删除任何文件。',
   locked: '已锁定',
-  outsideRepository: '在本仓库之外',
+  outsideRepository: '外部',
+  outsideRepositoryHint: '该登记来自仓库之外的目录。',
 
   copyPath: '复制路径',
   copied: '已复制',
@@ -116,7 +128,11 @@ export const zh: typeof en = {
   refresh: '刷新',
   loading: '正在读取工作树…',
 
-  prune: '清理失效登记',
+  // Short because it shares a row with the repository name, and a button long
+  // enough to wrap crowds that name out of the heading it belongs to. The full
+  // sentence is the button's title.
+  prune: '清理',
+  pruneHint: '移除检出目录已不存在的登记。',
   pruneNone: '没有失效登记。',
   pruneDone: '已清理 {count} 条。',
 
@@ -142,6 +158,10 @@ export const zh: typeof en = {
   switchBaseLocal: '本地分支',
   switchBaseRemote: '远程分支',
   switchBaseCurrent: '{branch}（当前）',
+  switchBaseSearch: '搜索分支',
+  switchBaseSearchClear: '清除搜索',
+  switchBaseNoMatch: '没有匹配该搜索的分支。',
+  switchBaseNoChoices: '该仓库还没有任何分支。',
   switchBaseNone: '本会话目录不在 Git 仓库中。',
 }
 

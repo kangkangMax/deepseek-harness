@@ -20,28 +20,15 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Checkbox, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Checkbox } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
-import type { BranchChoices, BranchKind, WorktreeSessionState } from '@deepseek-ai/dsh-experimental-worktree-console/types'
+import type { BranchChoices, WorktreeSessionState } from '@deepseek-ai/dsh-experimental-worktree-console/types'
+import { BasePicker } from './BasePicker.tsx'
 import { describeFailure, type SwitchInjected } from './face.ts'
 import { NS } from './locales.ts'
 import css from './Switch.module.css'
-
-/**
- * Menu id of the row that names no revision, so the armed step resolves HEAD
- * for itself. Resolving it later is the point: a base pinned to today's HEAD
- * would quietly ignore a commit the user makes before sending.
- */
-const HEAD_ID = 'head'
-
-/**
- * Prefix on every branch row. Branch names are free-form, so a branch literally
- * called `head` must land on its own id rather than on {@link HEAD_ID}.
- */
-const BRANCH_PREFIX = 'branch:'
 
 /** Runtime share (session kit), the Remote face, and the locale seat. */
 export type WorktreeSwitchProps =
@@ -59,7 +46,6 @@ export function WorktreeSwitch(props: WorktreeSwitchProps) {
   const [choices, setChoices] = useState<BranchChoices | undefined>(undefined)
   /** Explicit base revision, or undefined while the step is left to resolve HEAD. */
   const [base, setBase] = useState<string | undefined>(undefined)
-  const [open, setOpen] = useState(false)
 
   const alive = useRef(true)
   const face = useRef(props)
@@ -159,7 +145,6 @@ export function WorktreeSwitch(props: WorktreeSwitchProps) {
   const toggle = (checked: boolean): void => {
     if (!checked) {
       setBase(undefined)
-      setOpen(false)
       setBusy(true)
       setFailure(undefined)
       const signal = new AbortController().signal
@@ -172,39 +157,9 @@ export function WorktreeSwitch(props: WorktreeSwitchProps) {
     rearm(base)
   }
 
-  const entries: MenuEntry[] = [{ id: HEAD_ID, label: t('switchBaseHead') }]
-  if (choices !== undefined) {
-    if (choices.repositoryRoot === null) {
-      entries.push({ type: 'separator', id: 'branches' }, { type: 'label', id: 'none', text: t('switchBaseNone') })
-    } else {
-      /**
-       * One heading per namespace, and only when that namespace has rows: a
-       * local branch and its remote-tracking namesake are different revisions,
-       * so the heading is what says which one a row names — while a repository
-       * with no remote has nothing to head, and the HEAD row above still gives
-       * the picker something to say.
-       */
-      const group = (id: string, kind: BranchKind, text: string): MenuEntry[] => {
-        const matching = choices.branches.filter(branch => branch.kind === kind)
-        if (matching.length === 0) return []
-        return [
-          { type: 'separator', id },
-          { type: 'label', id: `${id}-label`, text },
-          ...matching.map(branch => ({
-            id: `${BRANCH_PREFIX}${branch.name}`,
-            label: branch.current ? t('switchBaseCurrent', { branch: branch.name }) : branch.name,
-          })),
-        ]
-      }
-      entries.push(...group('branches', 'local', t('switchBaseLocal')), ...group('remotes', 'remote', t('switchBaseRemote')))
-    }
-  }
-
-  const select = (id: string): void => {
-    setOpen(false)
-    const next = id.startsWith(BRANCH_PREFIX) ? id.slice(BRANCH_PREFIX.length) : undefined
-    setBase(next)
-    rearm(next)
+  const select = (revision: string | undefined): void => {
+    setBase(revision)
+    rearm(revision)
   }
 
   return <span className={css.wrap}>
@@ -216,25 +171,21 @@ export function WorktreeSwitch(props: WorktreeSwitchProps) {
       title={t('switchHint')}
       onChange={toggle}
     />
-    {state.armed && <Menu
-      open={open}
-      onClose={() => { setOpen(false) }}
-      // Portalled and opened upward for the same reason the permission chip
-      // beside it is: the tool row sits at the bottom of a card that clips.
-      side="top"
-      portal
-      anchor={<button
-        type="button"
-        className={css.base}
-        title={t('switchBaseHint')}
-        disabled={busy}
-        onClick={() => { setOpen(value => !value) }}
-      >
-        <span className={css.baseLabel}>{t('switchBase')}</span>
-        <span className={css.baseValue}>{base ?? t('switchBaseHead')}</span>
-      </button>}
-      items={entries}
-      selectedId={base === undefined ? HEAD_ID : `${BRANCH_PREFIX}${base}`}
+    {state.armed && <BasePicker
+      base={base}
+      choices={choices}
+      busy={busy}
+      hint={t('switchBaseHint')}
+      label={t('switchBase')}
+      headLabel={t('switchBaseHead')}
+      localLabel={t('switchBaseLocal')}
+      remoteLabel={t('switchBaseRemote')}
+      currentLabel={branch => t('switchBaseCurrent', { branch })}
+      searchLabel={t('switchBaseSearch')}
+      clearLabel={t('switchBaseSearchClear')}
+      noMatch={t('switchBaseNoMatch')}
+      noChoices={t('switchBaseNoChoices')}
+      noRepository={t('switchBaseNone')}
       onSelect={select}
     />}
     {failure !== undefined && <span className={css.failure} role="status">

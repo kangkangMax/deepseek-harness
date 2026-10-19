@@ -1,0 +1,191 @@
+/* The base picker: a trigger in the composer tool row, and a searchable card
+ * portalled above it. Surface tokens match the Menu primitive's card
+ * (ui-primitives Menu.module.css) so every dropdown reads as one material. */
+
+.root {
+  display: inline-flex;
+  min-width: 0;
+}
+
+/* The picker is the checkbox's sidebar: it appears once the intent is set, so
+ * it reads as a refinement of a decision already made. */
+.trigger {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  max-width: 200px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.trigger:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.trigger:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.triggerLabel {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.triggerValue {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── card ───────────────────────────────────────────────────────────────── */
+
+.card {
+  position: fixed;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 220px;
+  max-width: 340px;
+  max-height: min(320px, calc(100vh - 24px));
+  padding: 4px;
+  overflow: hidden;
+  border: 0;
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  box-shadow: var(--dsw-elevation-prominent);
+  color: var(--dsw-alias-label-primary);
+  /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.searchRow {
+  position: relative;
+  flex: none;
+  margin: 2px 0 3px;
+}
+
+.search {
+  padding: 5px 26px 5px 7px;
+  border: 0 solid transparent;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+}
+
+.search input {
+  padding: 0;
+  font-size: 12px;
+  line-height: normal;
+}
+
+.search input::placeholder {
+  color: var(--dsw-alias-label-caption);
+}
+
+.clear {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  corner-shape: round;
+  transform: translateY(-50%);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.clear:hover,
+.clear:focus-visible {
+  outline: none;
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.list {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ── rows ───────────────────────────────────────────────────────────────── */
+
+.row {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  min-width: 100%;
+  min-height: 28px;
+  padding: 3px 7px;
+  border: 0;
+  border-radius: var(--dsw-radius-md);
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover,
+.row:focus-visible,
+.row[data-active] {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.glyph {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.rowName {
+  overflow: hidden;
+  font-size: 12.5px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The branch this Session's directory has out is named on the row rather than
+ * only by the check, because the check marks the base and the two are not the
+ * same fact: an armed session can branch from any revision. */
+.current {
+  flex: none;
+  margin-left: auto;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
+
+.check {
+  flex: none;
+  margin-left: auto;
+  color: var(--dsw-alias-label-primary);
+}
+
+.current + .check {
+  margin-left: 6px;
+}
+
+.note {
+  margin: 0;
+  padding: 8px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 17px;
+}

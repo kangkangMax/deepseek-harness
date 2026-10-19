@@ -2,10 +2,15 @@
  * repository's worktrees on the right. Only real design tokens are used —
  * `--dsw-alias-*`, `--dsw-radius-*` — so both themes come for free. */
 
+/* Settings is a fixed-width overlay, so a viewport media query never describes
+ * it: this panel can be 630px wide inside a 1500px window, and every rule below
+ * has to answer to the panel's own width. The container is declared here, on the
+ * page's outermost element, because `.panes` cannot query itself. */
 .section {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  container: settings-pane / inline-size;
 }
 
 .header {
@@ -47,19 +52,30 @@
 
 /* ── two panes ───────────────────────────────────────────────────────────── */
 
+/* The repository names are directory basenames and the table's rows are branch
+ * names, so neither pane can be the one that gives: both ellipsize, and the
+ * branch is the one that must stay readable. 150px holds a name to about the
+ * same length the branch column gets, which is the honest split. */
 .panes {
   display: grid;
-  grid-template-columns: 210px minmax(0, 1fr);
-  gap: 20px;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 16px;
   align-items: start;
 }
 
-@media (max-width: 720px) {
+/* Stacked on the PANEL's width, not the window's — a 900px Settings panel in a
+   1500px window still gets two columns; a 620px one does not. */
+@container settings-pane (max-width: 620px) {
   .panes {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
+/* The heading shares its row with the cleanup button, and the button is a long
+ * sentence: without a cap it takes the row and the heading truncates to
+ * "WORKTREES IN AGENT-C…", which names no repository. Capping the action
+ * keeps the repository name — the one fact this row exists to say — legible,
+ * and the button's own label still says what it does. */
 .paneLabel {
   display: flex;
   align-items: center;
@@ -79,6 +95,10 @@
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+.paneLabel > :last-child {
+  flex: none;
 }
 
 .repositoryList {
@@ -159,21 +179,22 @@
 
 /* Column priorities: the branch name takes every pixel left over. Commit is not
  * a column (the hover card carries it) and the fixed columns are only as wide
- * as their content needs. */
+ * as their content needs. `1 changed` is the longest thing the changes column
+ * ever holds, and it carries its own padding in the tag. */
 .changesCell {
-  width: 92px;
+  width: 84px;
 }
 
 .sourceCell {
-  width: 88px;
+  width: 76px;
 }
 
 .actionsCell {
-  width: 64px;
+  width: 62px;
 }
 
 .table th {
-  padding: 0 12px 8px;
+  padding: 0 10px 8px;
   border-bottom: 1px solid var(--dsw-alias-border-l1);
   color: var(--dsw-alias-label-tertiary);
   font-size: 10.5px;
@@ -184,12 +205,12 @@
 }
 
 .table th.actionsCell {
-  padding-right: 12px;
+  padding-right: 10px;
 }
 
 .table td {
   height: 36px;
-  padding: 0 12px;
+  padding: 0 10px;
   border-bottom: 1px solid var(--dsw-alias-border-l1);
   vertical-align: middle;
 }
@@ -230,6 +251,24 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
+}
+
+/* A tag shares the branch cell with the branch itself, so it is trimmed to the
+   weight of its own padding: at this size these read as marks, not as words,
+   and every pixel here is a pixel the branch name does not get. The primitive
+   sets `data-tone`, so the selector needs no knowledge of its class names. */
+.branch [data-tone] {
+  padding: 0 5px;
+  font-size: 10.5px;
+  line-height: 15px;
+}
+
+/* The tag wrapper, not the tag, carries the hover title: `Tag` takes no
+   attributes, and a status word the user cannot expand is a status word they
+   have to guess at. */
+.mark {
+  display: inline-flex;
+  flex: none;
 }
 
 /* Detached checkouts have no branch to name them, so the label is quieted and

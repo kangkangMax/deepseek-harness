@@ -68,6 +68,33 @@ function pathTail(path: string): string {
   return `…${name.length > 8 ? name.slice(-8) : name}`
 }
 
+/**
+ * Characters kept on each side of an over-long branch name.
+ *
+ * A row is identified by its branch, and CSS ellipsis cuts from the right —
+ * which is exactly where the pool's random suffix lives. Five rows reading
+ * `worktree-1e…`, `worktree-5…`, `worktree-5…` are five rows the user cannot
+ * tell apart, which defeats the column's only job. Keeping the head says which
+ * namespace the branch belongs to and the tail says which one it is; the middle
+ * is the part nobody reads.
+ *
+ * Thirty-eight is above an ordinary branch name (`fix/darkfactory-upgrade-check`
+ * is 29), so only machine-generated ones pay the ellipsis: those are the ones
+ * whose head and tail both carry meaning and whose middle never does.
+ */
+const NAME_HEAD = 18
+const NAME_TAIL = 19
+
+/**
+ * Shorten a branch name from the middle, so both ends stay readable.
+ * @param branch - the branch name Git reported.
+ * @returns the name unchanged when it fits, otherwise head + ellipsis + tail.
+ */
+function middleTruncate(branch: string): string {
+  if (branch.length <= NAME_HEAD + NAME_TAIL + 1) return branch
+  return `${branch.slice(0, NAME_HEAD)}…${branch.slice(-NAME_TAIL)}`
+}
+
 /** The management page, as the Settings panel registers it. */
 export function WorktreeConsolePage(props: ConsoleProps) {
   return <Console {...props} />
@@ -118,11 +145,15 @@ function WorktreeTableRow({ row, busy, copied, t, reveal, onCopy, onReveal, onRe
               <span className={css.detached}>{t('detached')}</span>
               <span className={css.tail}>{pathTail(row.path)}</span>
             </>
-            : <span className={css.name}>{row.branch}</span>}
+            : <span className={css.name} title={row.branch}>{middleTruncate(row.branch)}</span>}
           {row.primary && <Tag tone="neutral">{t('primary')}</Tag>}
           {row.locked && <Tag tone="outline">{t('locked')}</Tag>}
-          {row.outsideRepository && <Tag tone="outline">{t('outsideRepository')}</Tag>}
-          {row.stale && <Tag tone="danger">{t('stale')}</Tag>}
+          {row.outsideRepository && <span className={css.mark} title={t('outsideRepositoryHint')}>
+            <Tag tone="outline">{t('outsideRepository')}</Tag>
+          </span>}
+          {row.stale && <span className={css.mark} title={t('staleHint')}>
+            <Tag tone="danger">{t('stale')}</Tag>
+          </span>}
         </span>}
         content={<div className={css.card}>
           <p className={css.cardPath}>{row.path}</p>
@@ -337,7 +368,13 @@ function Console(props: ConsoleProps) {
           : <>
             <div className={css.paneLabel}>
               <span className={css.paneLabelText}>{t('worktreesIn', { repository: selected.title })}</span>
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => { void runPrune(selected.id) }}>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                title={t('pruneHint')}
+                onClick={() => { void runPrune(selected.id) }}
+              >
                 {t('prune')}
               </Button>
             </div>

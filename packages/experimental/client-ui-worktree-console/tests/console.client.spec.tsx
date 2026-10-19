@@ -219,4 +219,40 @@ describe('worktree management page', () => {
     const heading = await screen.findByRole('heading', { name: en.section })
     expect(heading.querySelector('svg')).toBeTruthy()
   })
+
+  // CSS ellipsis cuts from the right, which is exactly where a generated
+  // worktree's random suffix lives: five rows would read `worktree-1e…`,
+  // `worktree-5…`, `worktree-5…` and the column would stop identifying
+  // anything. Both ends stay; the middle is what goes.
+  it('shortens an over-long branch name from the middle, keeping both ends', async () => {
+    const long = 'worktree-1ec37b78-85bb-47b5-9724-096c943b8117'
+    renderSection({ worktrees: [row([], { branch: long })] })
+
+    const shown = await screen.findByTitle(long)
+    expect(shown.textContent).toContain('worktree-1ec')
+    expect(shown.textContent).toContain('c943b8117')
+    expect(shown.textContent).toContain('…')
+    // The full name is one hover away, because the row is the only place a
+    // branch is written down.
+    expect(shown.textContent).not.toContain('85bb-47b5-9724')
+  })
+
+  it('leaves a branch name that fits alone', async () => {
+    renderSection({ worktrees: [row([], { branch: 'fix/darkfactory-upgrade-check' })] })
+
+    expect(await screen.findByText('fix/darkfactory-upgrade-check')).toBeTruthy()
+  })
+
+  // The cleanup action shares its row with the repository name. A button long
+  // enough to wrap takes the row, and the heading truncates to a name that
+  // identifies nothing — so the label stays short and the sentence is the
+  // title.
+  it('keeps the repository name in the heading row beside a titled cleanup', async () => {
+    renderSection()
+
+    const heading = await screen.findByText(en.worktreesIn.replace('{repository}', 'dsh'))
+    const cleanup = screen.getByText(en.prune).closest('button') as HTMLButtonElement
+    expect(heading).toBeTruthy()
+    expect(cleanup.getAttribute('title')).toBe(en.pruneHint)
+  })
 })
