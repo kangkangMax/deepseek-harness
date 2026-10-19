@@ -17,6 +17,7 @@ Compose the worktree management Host controller with the browser half that rende
 - [Understand the implementation](#understand-the-implementation)
 - [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
 
 -----
 
@@ -58,3 +59,12 @@ The directory change appends context after retained history rather than replacin
 - **Not listed among the shipped optional bundles** — this package lives in the repository and is enabled per profile; nothing enumerates or auto-installs it.
 - **Entering a Session needs a second plugin** — the composer switch only arms when the official worktree runtime is loaded.
 - **The change check cannot see ignored files** — a checkout whose only content is ignored reads as clean.
+
+### Dev Note
+
+<details>
+<summary>Maintainer details — click to expand</summary>
+
+This bundle is composition only: `npx vitest run packages/experimental/worktree-console-bundle` checks that its patch enables both halves and their icon.
+
+</details>

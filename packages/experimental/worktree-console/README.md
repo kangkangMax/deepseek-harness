@@ -17,6 +17,7 @@ List, prune, and remove the Git worktrees of the registered workspaces from the 
 - [Understand the implementation](#understand-the-implementation)
 - [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
 
 -----
 
@@ -27,9 +28,9 @@ Mount alongside `subprocess`, `sandbox`, `fs`, and `workspaceRegistry`. Every me
 
 | Method | Purpose |
 | --- | --- |
-| `list()` | Every registered repository that is a Git repository root, with the worktrees Git has on record for it. |
+| `list()` | Every registered repository that is a Git repository root, with every worktree Git has on record for it — including the repository's own checkout, which reports `primary`. |
 | `prune(repositoryId)` | Clear registrations whose checkout directory is gone. Idempotent; reports only what Git actually cleared. |
-| `removeWorktree(repositoryId, path, force)` | Remove one worktree and its registration. Refuses a dirty checkout unless `force` is set. |
+| `removeWorktree(repositoryId, path, force)` | Remove one worktree and its registration. Refuses a dirty checkout unless `force` is set, refuses the repository's own checkout outright, and clears a stale registration without touching the filesystem. |
 | `arm(sessionId, request)` / `disarm(sessionId)` | Set or drop an intent so the Session's next step materializes a worktree first. |
 | `state(sessionId)` | The arm flag, the checkout once one exists, and the last failure. |
 | `branches(sessionId)` | The Session directory's repository and its local branches, for the composer's base picker. A null repository means that directory is outside every repository. |
@@ -74,3 +75,12 @@ The directory change appends context after retained history rather than replacin
 - **The page's own git commands are unconfined** — they are actions a person asked for, with arguments built in this package and paths read back from `git worktree list`, so the sandbox seam is never consulted; what an *agent* may do to a worktree is a separate path with its own policy.
 - **Ignored files are not part of the change check** — `git status --porcelain` reports tracked and untracked changes only, so a checkout whose only content is ignored reads as clean.
 - **Session state is process-local** — the armed intent and the entered checkout live in memory and do not survive a Host restart.
+
+### Dev Note
+
+<details>
+<summary>Maintainer details — click to expand</summary>
+
+`npx vitest run packages/experimental/worktree-console` exercises this package against real Git repositories in temporary directories; no API key is needed.
+
+</details>

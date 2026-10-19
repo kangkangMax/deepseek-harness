@@ -9,6 +9,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { createConsoleFace, createSwitchFace } from './face.ts'
 import { WorktreeConsolePage } from './Console.tsx'
+import { WorktreeContext } from './ContextStrip.tsx'
 import { WorktreeSwitch } from './Switch.tsx'
 import { en, NS, zh } from './locales.ts'
 
@@ -36,6 +37,12 @@ function registerUi(ctx: Context): void {
   ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
     name: 'conversation.input.left', id: 'worktree', order: 100, locale: NS, inject: () => face,
   }, WorktreeSwitch))
+  // `conversation.composer.dock` is the row below the composer card, beside the
+  // context meter — the one place a sentence about *where* the next step runs
+  // sits next to the input it applies to, without a second new slot.
+  ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
+    name: 'conversation.composer.dock', id: 'worktree-context', order: 100, locale: NS, inject: () => face,
+  }, WorktreeContext))
 }
 
 /**

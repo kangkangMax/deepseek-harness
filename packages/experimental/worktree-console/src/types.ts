@@ -19,8 +19,15 @@ export interface WorktreeRow {
   /** Commit the registration currently points at. */
   readonly head: string
   /**
-   * Registered without a checkout directory. `prune` is the repair; `remove`
-   * refuses these because there is no directory left to remove.
+   * This row is the repository's own checkout — the one `git worktree list`
+   * calls the main working tree. It is a row so the page is a complete
+   * inventory, but Git refuses to remove it, so no removal is offered.
+   */
+  readonly primary: boolean
+  /**
+   * Registered without a checkout directory. `prune` clears the registration;
+   * a removal of this row clears it too, and deletes nothing because there is
+   * no directory left to delete.
    */
   readonly stale: boolean
   /** Repository-relative paths with uncommitted changes; empty when the checkout is absent. */

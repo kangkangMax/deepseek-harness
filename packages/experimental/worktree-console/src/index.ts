@@ -44,8 +44,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'worktree/not-found': { readonly repositoryId: string; readonly path: string }
     /** The checkout has uncommitted changes and the caller did not confirm losing them. */
     'worktree/dirty': { readonly path: string; readonly files: readonly string[] }
-    /** The registration has no checkout directory left; pruning is the repair. */
-    'worktree/stale': { readonly path: string }
+    /** The registration names the repository's own checkout, which Git refuses to remove. */
+    'worktree/primary': { readonly path: string }
     /** Git refused the removal. */
     'worktree/remove-failed': { readonly path: string; readonly reason: string }
     /**
@@ -309,9 +309,13 @@ export class WorktreeConsole extends TypertRemoteService {
     const rows: WorktreeRow[] = []
     for (const entry of await this.git.list(repository.path, signal)) {
       signal.throwIfAborted()
-      // The repository's own checkout is the repository: Git refuses to remove
-      // it and `prune` never touches it, so it is not a row.
-      if (entry.bare || entry.path === repository.path) continue
+      if (entry.bare) continue
+      // The repository's own checkout is a row like any other. Leaving it out
+      // made the page a list of *extra* checkouts, which reads as "you have no
+      // worktrees here" beside a directory the user is working in; including
+      // it is what makes the page an inventory. Removal is refused below, so
+      // the extra row costs the user nothing.
+      const primary = entry.path === repository.path
       const present = await this.exists(entry.path, signal)
       // One uninspectable checkout degrades its own row instead of blanking the
       // whole page with a rejection.
@@ -322,10 +326,11 @@ export class WorktreeConsole extends TypertRemoteService {
         path: entry.path,
         branch: shortBranch(entry.branch),
         head: entry.head,
+        primary,
         stale: !present,
         dirtyFiles: risk.changed,
         ignoredFiles: risk.ignored,
-        outsideRepository: !entry.path.startsWith(`${repository.path}/`),
+        outsideRepository: !primary && !entry.path.startsWith(`${repository.path}/`),
         locked: entry.locked,
         origin: classifyOrigin(entry.path, repository.path),
       })
@@ -393,8 +398,23 @@ export class WorktreeConsole extends TypertRemoteService {
     if (entry === undefined) {
       throw new RemoteError('worktree/not-found', `no worktree at "${path}"`, { repositoryId, path })
     }
+    // The repository's own checkout is the last row a user may act on: Git
+    // refuses to remove it, and there is no directory to delete either, so the
+    // page reports the refusal instead of offering an action that cannot run.
+    if (entry.path === repository.path) {
+      throw new RemoteError('worktree/primary', `"${path}" is the repository's own checkout`, { path })
+    }
     if (!await this.exists(path, signal)) {
-      throw new RemoteError('worktree/stale', `the checkout at "${path}" no longer exists`, { path })
+      // A registration without a checkout is a bookkeeping row, not a
+      // directory: the repair is pruning, and it deletes no files because none
+      // are there. `git worktree prune` visits every stale registration in one
+      // pass, so this also clears rows the page showed as stale beside it.
+      await this.git.prune(repository.path, signal)
+      if ((await this.git.list(repository.path, signal)).some(candidate => candidate.path === path)) {
+        throw new RemoteError('worktree/remove-failed', `Git kept the registration for "${path}"`, { path, reason: 'prune-kept-registration' })
+      }
+      this.forget(path)
+      return { removed: path }
     }
     // Re-read the working tree here rather than trusting the page's snapshot:
     // the confirmation the user saw may be older than what is now at risk.
@@ -418,11 +438,15 @@ export class WorktreeConsole extends TypertRemoteService {
         { cause: error },
       )
     }
-    // A Session must stop claiming a checkout that is gone.
+    this.forget(path)
+    return { removed: path }
+  }
+
+  /** Drop every Session's claim on a checkout that is gone. */
+  private forget(path: string): void {
     for (const [sessionId, entered] of this.entered) {
       if (entered.path === path) this.entered.delete(sessionId)
     }
-    return { removed: path }
   }
 }
 

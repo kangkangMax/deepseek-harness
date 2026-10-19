@@ -12,11 +12,11 @@
   en: e6bc923af8941142
   zh: e5711ef4434440c4
 /deepseek-ai-dsh-experimental-worktree-console/table-of-contents:
-  en: 3460b3e585e0c020
-  zh: 534791af20aa1773
+  en: 76368b6b1da79c80
+  zh: 434cf3c1f5db33cd
 /deepseek-ai-dsh-experimental-worktree-console/use-this-package:
-  en: d3dc3783b1651f7b
-  zh: adf4d1300bfb2b4d
+  en: 8462bab8f1a67a04
+  zh: 7cf6797297a2da48
 /deepseek-ai-dsh-experimental-worktree-console/understand-the-implementation:
   en: 00643d8efa248d32
   zh: ddd46a30ff4b1ca7
@@ -38,3 +38,6 @@
 /deepseek-ai-dsh-experimental-worktree-console/known-limitations-and-deferred-work:
   en: 32a488ce3392b78b
   zh: 7a4690fcae4802e5
+/deepseek-ai-dsh-experimental-worktree-console/known-limitations-and-deferred-work/dev-note:
+  en: 3a14ec884a1f6ee1
+  zh: 0f14e359ec8ce9ee

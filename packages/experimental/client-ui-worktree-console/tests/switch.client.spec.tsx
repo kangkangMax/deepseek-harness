@@ -26,7 +26,10 @@ function idle(over: Partial<WorktreeSessionState> = {}): WorktreeSessionState {
 function renderSwitch(
   options: {
     blank?: boolean
+    running?: boolean
     state?: WorktreeSessionState
+    /** Answers for reads after the first, which is what a re-read asks for. */
+    then?: WorktreeSessionState
     after?: WorktreeSessionState
     rejects?: unknown
     choices?: BranchChoices
@@ -34,8 +37,11 @@ function renderSwitch(
 ) {
   const arm = vi.fn(async () => options.after ?? idle({ armed: true }))
   const disarm = vi.fn(async () => idle())
+  let reads = 0
   const state = vi.fn(async () => {
     if (options.rejects !== undefined) throw options.rejects
+    reads += 1
+    if (reads > 1 && options.then !== undefined) return options.then
     return options.state ?? idle()
   })
   const branches = vi.fn(async () => options.choices ?? {
@@ -45,17 +51,29 @@ function renderSwitch(
       { name: 'feature/one', kind: 'local' as const, current: false },
     ],
   })
-  const props = {
+  const props = (over: { blank?: boolean; running?: boolean } = {}) => ({
     sessionId: 'session-1',
-    useSession: (selector: (snapshot: { blank: boolean }) => unknown) => selector({ blank: options.blank ?? true }),
+    useSession: (selector: (snapshot: { blank: boolean; running: boolean }) => unknown) => selector({
+      blank: over.blank ?? options.blank ?? true,
+      running: over.running ?? options.running ?? false,
+    }),
     t: literalT(),
     arm,
     disarm,
     state,
     branches,
-  } as WorktreeSwitchProps
-  render(<WorktreeSwitch {...props} />)
-  return { arm, disarm, state, branches }
+  } as WorktreeSwitchProps)
+  const view = render(<WorktreeSwitch {...props()} />)
+  return {
+    arm,
+    disarm,
+    state,
+    branches,
+    container: view.container,
+    rerenderWith: (over: { blank?: boolean; running?: boolean }) => {
+      view.rerender(<WorktreeSwitch {...props(over)} />)
+    },
+  }
 }
 
 describe('composer worktree switch', () => {
@@ -84,24 +102,60 @@ describe('composer worktree switch', () => {
     await waitFor(() => { expect(disarm).toHaveBeenCalledWith('session-1', expect.anything()) })
   })
 
-  // The badge is the only way the isolation state survives a reload; without
-  // it the switch would read as "not armed" in a session already in a worktree.
-  it('shows a read-only badge once the session is in a worktree', async () => {
-    renderSwitch({
+  // A Session already in a worktree says nothing here: the context strip below
+  // the composer names the branch, and a second badge in the tool row claimed
+  // the same fact twice.
+  it('stays silent once the session is in a worktree', async () => {
+    const { state } = renderSwitch({
       blank: false,
       state: idle({
         worktree: { path: '/r/.agents/worktrees/x', branch: 'brave-otter', baseCommit: 'a', repositoryRoot: '/r' },
       }),
     })
 
-    expect(await screen.findByText('Working in brave-otter')).toBeTruthy()
-    expect(screen.queryByRole('button')).toBeNull()
+    await waitFor(() => { expect(state).toHaveBeenCalled() })
+    expect(screen.queryByText(en.switchLabel)).toBeNull()
+    expect(screen.queryByText(/brave-otter/)).toBeNull()
   })
 
   it('surfaces the reason the host refused to prepare a worktree', async () => {
     renderSwitch({ state: idle({ failure: 'worktree branch already exists: brave-otter' }) })
 
     expect(await screen.findByText(/already exists/)).toBeTruthy()
+  })
+
+  // The Host spends the arm before attempting the step, and the refusal ends
+  // the turn before the model is called, so nothing else reports it. The reason
+  // arrives with the Session's next reading — and by then the Session is no
+  // longer blank, which is exactly when this row used to render nothing at all.
+  it('reports a refusal that lands after the session stopped being empty', async () => {
+    const { state, rerenderWith } = renderSwitch({
+      blank: true,
+      state: idle({ armed: true }),
+      then: idle({
+        armed: false,
+        failure: 'worktree command failed (71): sandbox-exec: sandbox_apply: Operation not permitted',
+      }),
+    })
+    await waitFor(() => { expect(state).toHaveBeenCalledTimes(1) })
+
+    rerenderWith({ blank: false, running: true })
+    rerenderWith({ blank: false, running: false })
+
+    expect(await screen.findByText(/sandbox_apply: Operation not permitted/)).toBeTruthy()
+    // The arm is spent, so a toggle would arm nothing.
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    // The row ellipsizes; the element still carries the whole reason.
+    const [reported] = screen.getAllByRole('status')
+    expect(reported.getAttribute('title')).toContain('sandbox_apply: Operation not permitted')
+  })
+
+  // Every run ends the same way; only the first ending after a refusal carries
+  // news, so the row does not re-read on each idle tick.
+  it('does not re-read a session that never ran', async () => {
+    const { state } = renderSwitch({ running: false })
+    await waitFor(() => { expect(state).toHaveBeenCalled() })
+    await waitFor(() => { expect(state).toHaveBeenCalledTimes(1) })
   })
 
   // Arming is an intent the user sets and sees set, so the control is a real

@@ -1,5 +1,5 @@
 ---
-description: "在设置面板提供工作树管理页，并在 composer 工具行渲染工作树复选框。自身不贡献任何模型上下文。"
+description: "在设置面板提供工作树管理页，并在 composer 渲染工作树复选框与分支信息行。自身不贡献任何模型上下文。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-在设置面板提供工作树管理页，并在 composer 工具行渲染工作树复选框。自身不贡献任何模型上下文。
+在设置面板提供工作树管理页，并在 composer 渲染工作树复选框与分支信息行。自身不贡献任何模型上下文。
 
 ## 目录
 
@@ -17,20 +17,22 @@ kind: "package-reference"
 - [理解实现](#understand-the-implementation)
 - [模型体验](#model-experience)
 - [已知限制与后续工作](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
 
 -----
 
 <a id="use-this-package"></a>
 ## 使用此包
 
-由 `@deepseek-ai/dsh-experimental-worktree-console-bundle` 挂载，不单独挂载。它注册两项贡献。
+由 `@deepseek-ai/dsh-experimental-worktree-console-bundle` 挂载，不单独挂载。它注册三项贡献。
 
 | 席位 | 行为 |
 | --- | --- |
 | `settings.section`，id `worktree-console` | 设置面板左侧的「工作树」导航项，点开即管理页。 |
-| `conversation.input.left`，id `worktree` | composer 复选框 —— 空白会话显示可勾选的控件，勾选后旁边出现基点分支选择器，已进入工作树的会话显示只读徽章。 |
+| `conversation.input.left`，id `worktree` | composer 复选框 —— 空白会话显示可勾选的控件，勾选后旁边出现基点分支选择器。宿主拒绝的那次 run 结束后，这一行改为报告原因：意图已被消费掉，再给一个开关也武装不出任何东西。已经进入工作树的会话在这里没有可决定的事，因此整行不渲染。 |
+| `conversation.composer.dock`，id `worktree-context` | 输入框下方的一行，报告会话将在哪个分支上运行；检出的绝对目录挂在它的悬浮上。 |
 
-两者都读 `worktrees` Remote；都不持有宿主没有的状态。
+三者都读 `worktrees` Remote；都不持有宿主没有的状态。
 
 基点选择器随勾选一起出现，而不是提前出现。未勾选时没有任何东西需要限定；一个等在旁边的基点控件会被读成「必须先设对」的前置设置。这也让从未武装过的会话（也就是大多数会话）根本不去读分支列表。
 
@@ -39,9 +41,15 @@ kind: "package-reference"
 
 管理页独占设置面板的一个导航项，因此不与任何插件的配置页混在一起。
 
+表格的列按「谁在标识这一行」排序：分支名吃掉剩余的全部宽度 —— 唯一能区分两行的那一列拿走空间 —— 而提交与绝对目录放在分支格子的悬浮卡里，旁边是「复制路径」，以及宿主有桌面端时的「显示位置」。来源是窄固定列，面板变窄时先被丢掉。
+
+composer 那一行只打印一个值。分支是「我接下来在哪干活」最短的答案，也是同一仓库上不同会话之间唯一会变的值；检出的绝对目录长到足以把 dock 其余内容挤走。于是这一行打印分支、悬浮在分支上给出目录 —— 该路径的最后一段也就是仓库名。
+
 面向 Remote 的函数单独成模块而非写在组件里。这样浏览器 spec 可以对着一个字面 face 运行，而不必 import 只在构建后才存在的 Remote 生成物。
 
-两个组件都不替宿主做决定。页面按 `state` 报告的原文渲染武装标志与已进入的检出；复选框在宿主回答之前不渲染 —— 因此挂载不会在「已武装/未武装」之间闪，徽章也不会报告一个宿主从未创建过的检出。
+没有任何组件替宿主做决定。页面按 `state` 报告的原文渲染武装标志与已进入的检出；复选框与分支行在宿主回答之前都不渲染 —— 因此挂载不会在「已武装/未武装」之间闪，它们也都不会报告一个宿主从未创建过的检出。
+
+composer 上的两处读取都会在一次 run 结束时重读。被拒绝的武装会在调用模型之前结束这一轮，所以它的原因只存在于一个地方 —— 宿主的读取结果 —— 而「该重读了」这件事只有那次 run 本身说得出来。没有这次重读，一次拒绝就是一个什么都没留下的空轮次；而成功物化的工作树会让分支行在整个会话里继续报仓库自己的检出。
 
 <a id="model-experience"></a>
 ## 模型体验
@@ -65,5 +73,14 @@ kind: "package-reference"
 <a id="known-limitations-and-deferred-work"></a>
 
 - **复选框只服务空白会话** —— 该规则由客户端不渲染该控件来保证，宿主不再复核。
-- **徽章不会在同一会话内刷新** —— 宿主状态只在该控件挂载时读取，因此同一会话稍后进入的工作树要等重新挂载才出现。
+- **composer 的读取在两轮之间刷新，而不是轮内** —— 分支、目录与武装状态在一次 run 结束时重读一次，因此 run 中途切换的检出会一直保留旧名字，直到这一轮结束。
 - **变更检查看不到被 ignore 的文件** —— 页面只报告已跟踪与未跟踪的改动，因此只有被 ignore 内容的检出会读作「干净」。
+
+### 开发备注
+
+<details>
+<summary>维护者信息 — 点击展开</summary>
+
+`npx vitest run packages/experimental/client-ui-worktree-console` 在 jsdom 中用字面量 face 渲染这些组件，不需要 Host 或构建产物。
+
+</details>

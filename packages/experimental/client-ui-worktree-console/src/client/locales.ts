@@ -1,4 +1,4 @@
-/** Dictionaries for the worktree management section and the composer switch. */
+/** Dictionaries for the worktree management section, the composer switch, and the composer branch line. */
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 
 /** Dictionary namespace owned by this plugin. */
@@ -14,26 +14,34 @@ export const en = {
   repositoriesEmpty: 'No registered workspace is a Git repository.',
 
   worktrees: 'Worktrees',
+  worktreesIn: 'Worktrees in {repository}',
   worktreesEmpty: 'This repository has no worktrees.',
   selectRepository: 'Select a repository to see its worktrees.',
 
   branch: 'Branch',
   head: 'Commit',
   changes: 'Changes',
-  source: 'Created by',
+  source: 'Source',
 
   detached: 'detached',
   changedCount: '{count} changed',
+  clean: 'clean',
 
-  originOfficial: 'Official plugin',
-  originThirdParty: 'Third-party plugin',
-  originManual: 'Manual or unknown',
+  originOfficial: 'Official',
+  originThirdParty: 'Third-party',
+  originManual: 'Manual',
 
-  stale: 'Missing checkout',
-  staleHint:
-    'The registration has no checkout directory. “Clean up stale registrations” removes it.',
-  locked: 'Locked',
-  outsideRepository: 'Outside this repository',
+  primary: 'primary',
+  stale: 'stale',
+  staleHint: 'The registration has no checkout directory left.',
+  staleCardHint:
+    'Directory no longer exists — removing this row only drops the registration, not any files.',
+  locked: 'locked',
+  outsideRepository: 'outside repo',
+
+  copyPath: 'Copy path',
+  copied: 'Copied',
+  reveal: 'Reveal',
 
   refresh: 'Refresh',
   loading: 'Loading worktrees…',
@@ -53,10 +61,10 @@ export const en = {
   removeDone: 'Removed {path}.',
 
   failed: 'The request failed.',
+  revealFailed: 'Could not show this directory in the file manager.',
 
   switchLabel: 'Worktree',
   switchHint: 'Create a Git worktree for this session and work in it',
-  switchWorking: 'Working in {branch}',
   switchArmFailed: 'Could not prepare a worktree: {reason}',
   switchBase: 'Base',
   switchBaseHint: 'Branch the new worktree starts from',
@@ -77,25 +85,33 @@ export const zh: typeof en = {
   repositoriesEmpty: '没有已注册的工作区是 Git 仓库。',
 
   worktrees: '工作树',
+  worktreesIn: '{repository} 中的工作树',
   worktreesEmpty: '该仓库没有工作树。',
   selectRepository: '选择一个仓库以查看它的工作树。',
 
   branch: '分支',
   head: '提交',
   changes: '改动',
-  source: '创建者',
+  source: '来源',
 
   detached: '游离',
   changedCount: '{count} 项改动',
+  clean: '干净',
 
-  originOfficial: '官方插件',
-  originThirdParty: '第三方插件',
-  originManual: '手动或未知',
+  originOfficial: '官方',
+  originThirdParty: '第三方',
+  originManual: '手动',
 
-  stale: '检出已丢失',
-  staleHint: '登记还在但检出目录不存在。用「清理失效登记」把它清掉。',
+  primary: '主检出',
+  stale: '已失效',
+  staleHint: '登记还在，但检出目录已不存在。',
+  staleCardHint: '目录已不存在 —— 删除这一行只会移除登记，不会删除任何文件。',
   locked: '已锁定',
   outsideRepository: '在本仓库之外',
+
+  copyPath: '复制路径',
+  copied: '已复制',
+  reveal: '显示位置',
 
   refresh: '刷新',
   loading: '正在读取工作树…',
@@ -115,10 +131,10 @@ export const zh: typeof en = {
   removeDone: '已删除 {path}。',
 
   failed: '请求失败。',
+  revealFailed: '无法在文件管理器中显示该目录。',
 
   switchLabel: '工作树',
   switchHint: '为本会话创建一个 Git 工作树并在其中工作',
-  switchWorking: '正在 {branch} 中工作',
   switchArmFailed: '无法准备工作树：{reason}',
   switchBase: '基线',
   switchBaseHint: '新工作树从哪个分支拉出',
@@ -134,7 +150,7 @@ export type WorktreeConsoleKey = keyof typeof en
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** Worktree management section and composer switch copy. */
+    /** Worktree management section, composer switch, and composer branch line copy. */
     worktreeConsole: WorktreeConsoleKey
   }
 }

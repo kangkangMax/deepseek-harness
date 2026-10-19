@@ -1,3 +1,7 @@
+/* The page is a two-pane inventory: repositories on the left, the selected
+ * repository's worktrees on the right. Only real design tokens are used —
+ * `--dsw-alias-*`, `--dsw-radius-*` — so both themes come for free. */
+
 .section {
   display: flex;
   flex-direction: column;
@@ -6,56 +10,81 @@
 
 .header {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
 }
 
 .title {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 0;
+  margin: 0 0 2px;
   font-size: 14px;
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 /* The same branch glyph the composer switch and the bundle icon carry, so the
    section reads as the same feature wherever it appears. */
 .titleGlyph {
   flex: none;
-  color: var(--dsh-color-text-secondary);
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .hint {
   margin: 0;
-  color: var(--dsh-color-text-secondary);
-  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12.5px;
+  line-height: 18px;
 }
 
 .notice {
   margin: 0;
-  color: var(--dsh-color-text-secondary);
+  color: var(--dsw-alias-label-secondary);
   font-size: 12px;
 }
 
-.columns {
+/* ── two panes ───────────────────────────────────────────────────────────── */
+
+.panes {
   display: grid;
-  grid-template-columns: minmax(180px, 240px) 1fr;
-  gap: 16px;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 20px;
   align-items: start;
 }
 
 @media (max-width: 720px) {
-  .columns {
+  .panes {
     grid-template-columns: 1fr;
   }
+}
+
+.paneLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0 10px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.paneLabelText {
+  min-width: 0;
+  overflow: hidden;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .repositoryList {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -63,83 +92,321 @@
 
 .repositoryButton {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   width: 100%;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
   background: transparent;
-  color: inherit;
+  color: var(--dsw-alias-label-secondary);
   font: inherit;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
 }
 
 .repositoryButton:hover {
-  background: var(--dsh-color-surface-hover);
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
 .repositoryButton[aria-current='true'] {
-  background: var(--dsh-color-surface-selected);
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 500;
 }
 
 .repositoryName {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .repositoryCount {
-  color: var(--dsh-color-text-secondary);
+  flex: none;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  text-align: center;
 }
 
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.repositoryButton[aria-current='true'] .repositoryCount {
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* ── worktree table ─────────────────────────────────────────────────────── */
+
+.worktreePane {
+  min-width: 0;
+  container-type: inline-size;
 }
 
 .table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: 12px;
 }
 
-.table th,
-.table td {
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--dsh-color-border-subtle);
-  text-align: left;
-  vertical-align: top;
+/* Column priorities: the branch name takes every pixel left over. Commit is not
+ * a column (the hover card carries it) and the fixed columns are only as wide
+ * as their content needs. */
+.changesCell {
+  width: 92px;
+}
+
+.sourceCell {
+  width: 88px;
+}
+
+.actionsCell {
+  width: 64px;
 }
 
 .table th {
-  color: var(--dsh-color-text-secondary);
+  padding: 0 12px 8px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.table th.actionsCell {
+  padding-right: 12px;
+}
+
+.table td {
+  height: 36px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  vertical-align: middle;
+}
+
+.table tr:last-child td {
+  border-bottom: 0;
+}
+
+.table tbody tr:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.branchCell {
+  overflow: hidden;
+}
+
+/* `overflow: hidden` is the guard: when the columns squeeze, a long label is
+   clipped inside its own cell instead of running into the next one. The hover
+   card is portalled, so nothing here can clip it. */
+.branch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.branchGlyph {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 500;
 }
 
-.path {
-  overflow-wrap: anywhere;
-  font-family: var(--dsh-font-mono);
+/* Detached checkouts have no branch to name them, so the label is quieted and
+   the directory tail below is what tells two of them apart. */
+.detached {
+  flex: none;
+  color: var(--dsw-alias-label-secondary);
+  font-style: italic;
+  font-weight: 400;
 }
 
-.commit {
-  font-family: var(--dsh-font-mono);
+.tail {
+  flex: none;
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
 }
 
-.badges {
+.clean {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11.5px;
+}
+
+.dimmed {
+  color: var(--dsw-alias-label-caption);
+}
+
+.changedTag {
   display: inline-flex;
-  gap: 4px;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
 }
+
+.dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.sourceText {
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Removal is always visible: a menu that only appears on hover is a menu the
+   user has to discover twice. Quiet at rest, red under the pointer, and
+   disabled rather than absent where Git would refuse — so the right edge never
+   loses a button and the row keeps its shape. */
+.table td.actionsCell {
+  padding-right: 8px;
+  text-align: right;
+}
+
+.remove {
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.table tbody tr:hover .remove:not(:disabled) {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.remove:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 6%, transparent);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.remove:disabled {
+  background: transparent;
+  color: var(--dsw-alias-label-caption);
+  cursor: not-allowed;
+}
+
+/* Narrowing drops the source column before it touches the branch name. */
+@container (max-width: 560px) {
+  .sourceCell {
+    display: none;
+  }
+}
+
+/* ── hover card content ─────────────────────────────────────────────────── */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+}
+
+.cardPath {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11.5px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+  /* A path has no spaces: only `break-all` fills each line, and a path left
+     unfilled overflows the clamp it was supposed to fit in. */
+  word-break: break-all;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.cardWarn {
+  display: flex;
+  gap: 6px;
+  margin: 7px 0 0;
+  color: var(--dsw-alias-state-warn-primary);
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.cardWarn > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.cardFoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.cardMeta {
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.cardActions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.cardAction {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.cardAction:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* ── removal dialog ─────────────────────────────────────────────────────── */
 
 .files {
   margin: 4px 0 0;
   padding-left: 16px;
-  font-family: var(--dsh-font-mono);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   overflow-wrap: anywhere;
 }
 
@@ -149,7 +416,7 @@
   align-items: center;
   gap: 6px;
   margin-top: 4px;
+  color: var(--dsw-alias-label-secondary);
   font-size: 13px;
-  color: var(--dsh-color-text-secondary);
   cursor: pointer;
 }

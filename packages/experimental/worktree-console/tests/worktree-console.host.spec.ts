@@ -29,7 +29,9 @@ async function registered(root: string): Promise<string> {
 }
 
 describe('worktree console Remote', () => {
-  it('lists a worktree with its origin and leaves the repository itself out', async () => {
+  // The repository's own checkout is a row: the page is the whole inventory, so
+  // a user sees which worktree they are already in beside the extra ones.
+  it('lists the repository’s own checkout first, then the worktrees it registered', async () => {
     fixture = await repository()
     const one = await worktreeAt(fixture, 'brave-otter')
     live = await harness(fixture, [fixture])
@@ -38,17 +40,23 @@ describe('worktree console Remote', () => {
 
     expect(snapshot.repositories).toHaveLength(1)
     expect(snapshot.repositories[0]?.path).toBe(fixture)
-    expect(snapshot.repositories[0]?.worktrees).toEqual([
-      { path: one, branch: 'brave-otter', head: expect.stringMatching(/^[0-9a-f]{40}$/) as string,
-        stale: false, dirtyFiles: [], ignoredFiles: [], outsideRepository: false, locked: false, origin: 'official' },
-    ])
+    const rows = snapshot.repositories[0]?.worktrees ?? []
+    expect(rows.map(row => row.path)).toEqual([fixture, one])
+    expect(rows[0]).toMatchObject({ primary: true, branch: 'main', stale: false, outsideRepository: false, origin: 'manual' })
+    expect(rows[1]).toEqual({
+      path: one, branch: 'brave-otter', head: expect.stringMatching(/^[0-9a-f]{40}$/) as string,
+      primary: false, stale: false, dirtyFiles: [], ignoredFiles: [], outsideRepository: false, locked: false,
+      origin: 'official',
+    })
   })
 
-  it('reports a repository with no worktrees as an empty list, not a missing one', async () => {
+  it('still reports the repository itself when it registered no worktrees', async () => {
     fixture = await repository()
     live = await harness(fixture, [fixture])
 
-    expect((await live.ctx.worktreeConsole.list(signal())).repositories[0]?.worktrees).toEqual([])
+    const rows = (await live.ctx.worktreeConsole.list(signal())).repositories[0]?.worktrees ?? []
+    expect(rows.map(row => row.path)).toEqual([fixture])
+    expect(rows[0]?.primary).toBe(true)
   })
 
   /**
@@ -96,7 +104,8 @@ describe('worktree console Remote', () => {
 
     // Git lists tracked modifications before untracked entries, so compare as
     // a set: the page shows the files, the order is Git's.
-    expect([...(rows[0]?.dirtyFiles ?? [])].sort()).toEqual(['fresh.txt', 'tracked.txt'])
+    const row = rows.find(candidate => candidate.path === one)
+    expect([...(row?.dirtyFiles ?? [])].sort()).toEqual(['fresh.txt', 'tracked.txt'])
   })
 
   it('refuses a dirty removal without confirmation and leaves the repository unchanged', async () => {
@@ -142,8 +151,9 @@ describe('worktree console Remote', () => {
     live = await harness(fixture, [fixture])
 
     const rows = (await live.ctx.worktreeConsole.list(signal())).repositories[0]?.worktrees ?? []
-    expect(rows[0]?.dirtyFiles).toEqual([])
-    expect(rows[0]?.ignoredFiles).toEqual(['.env'])
+    const row = rows.find(candidate => candidate.path === one)
+    expect(row?.dirtyFiles).toEqual([])
+    expect(row?.ignoredFiles).toEqual(['.env'])
 
     const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, one, false, signal()).catch((error: unknown) => error)
     expect(remoteErrorOf(failure)).toMatchObject({ code: 'worktree/dirty', details: { files: ['.env'] } })
@@ -163,7 +173,7 @@ describe('worktree console Remote', () => {
       live = await harness(fixture, [fixture])
 
       const rows = (await live.ctx.worktreeConsole.list(signal())).repositories[0]?.worktrees ?? []
-      expect(rows[0]?.outsideRepository).toBe(true)
+      expect(rows.find(candidate => candidate.path === outside)?.outsideRepository).toBe(true)
 
       const outcome = await live.ctx.worktreeConsole.removeWorktree(fixture, outside, true, signal())
       expect(outcome).toEqual({ removed: outside })
@@ -177,15 +187,31 @@ describe('worktree console Remote', () => {
     }
   })
 
-  it('refuses a stale registration, because pruning is the repair', async () => {
+  // A registration whose directory is gone is bookkeeping, not a directory: the
+  // repair is pruning it, and no file can be lost because none is there. The
+  // page reads this row as `stale` and offers the same Remove it offers the
+  // living rows.
+  it('clears the registration of a stale row without deleting anything', async () => {
     fixture = await repository()
     const one = await worktreeAt(fixture, 'brave-otter')
     await rm(one, { recursive: true, force: true })
     live = await harness(fixture, [fixture])
 
-    const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, one, true, signal()).catch((error: unknown) => error)
+    expect(await live.ctx.worktreeConsole.removeWorktree(fixture, one, true, signal())).toEqual({ removed: one })
+    expect(await registered(fixture)).not.toContain(one)
+  })
 
-    expect(remoteErrorOf(failure)).toMatchObject({ code: 'worktree/stale', details: { path: one } })
+  // The repository's own checkout is the one row a user cannot act on: Git
+  // refuses it, and deleting the directory would delete the repository.
+  it('refuses to remove the repository’s own checkout', async () => {
+    fixture = await repository()
+    live = await harness(fixture, [fixture])
+
+    const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, fixture, true, signal())
+      .catch((error: unknown) => error)
+
+    expect(remoteErrorOf(failure)).toMatchObject({ code: 'worktree/primary', details: { path: fixture } })
+    expect(await registered(fixture)).toContain(fixture)
   })
 
   it('rejects a checkout the repository does not know', async () => {

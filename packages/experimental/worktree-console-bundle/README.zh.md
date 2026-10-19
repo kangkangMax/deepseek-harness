@@ -17,6 +17,7 @@ kind: "package-bundle"
 - [理解实现](#understand-the-implementation)
 - [模型体验](#model-experience)
 - [已知限制与后续工作](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
 
 -----
 
@@ -58,3 +59,12 @@ kind: "package-bundle"
 - **不在随发行提供的可选 Bundle 名单里** —— 本包位于仓库内、按 profile 启用；没有任何清单枚举或自动安装它。
 - **进入会话需要第二个插件** —— 只有在官方 worktree 运行时已加载时，composer 开关才能武装。
 - **变更检查看不到被 ignore 的文件** —— 只有被 ignore 内容的检出会读作「干净」。
+
+### 开发备注
+
+<details>
+<summary>维护者信息 — 点击展开</summary>
+
+本 Bundle 只负责组合：`npx vitest run packages/experimental/worktree-console-bundle` 校验它的 patch 是否启用了两半以及图标。
+
+</details>

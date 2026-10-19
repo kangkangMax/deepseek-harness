@@ -5,11 +5,19 @@
  *
  * It owns one Settings navigation row, so the page is where a user looks for it
  * rather than at the bottom of a plugin's own detail page.
+ *
+ * The table is four columns wide and one fact per column. The commit and the
+ * full directory are not columns: they are what the branch cell's hover card
+ * shows, because the branch name is the only thing that tells two rows apart,
+ * and every pixel spent on a second identifier is a pixel taken from it.
  * @module @deepseek-ai/dsh-experimental-client-ui-worktree-console/src/client/Console
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, IconBranchOutlineRegular, Modal, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  Button, HoverCard, IconBranchOutlineRegular, IconRefreshOutlineRegular, IconWarningTriangleOutlineRegular,
+  Modal, Tag, writeClipboard,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {
@@ -33,11 +41,31 @@ interface PendingRemoval {
   readonly files: readonly string[]
   /** Ignored paths that would also be deleted; shown as a count, not a list. */
   readonly ignoredCount: number
+  /** The registration has no checkout left, so nothing on disk is at stake. */
+  readonly stale: boolean
 }
 
-/** Shorten a commit for the table without hiding which commit it is. */
+/** How long the copy action reports its own success. */
+const COPIED_MS = 1_200
+
+/** Shorten a commit for the hover card without hiding which commit it is. */
 function shortCommit(commit: string): string {
   return commit.slice(0, 8)
+}
+
+/**
+ * The distinguishing tail of a detached checkout's directory.
+ *
+ * Two detached checkouts of the same commit are told apart by where they sit,
+ * and the pool names each directory after what created it. Only the tail is
+ * shown in the row: the full path is one gesture away in the hover card.
+ * @param path - absolute checkout directory.
+ * @returns the shortest readable tail, prefixed to read as a truncated path.
+ */
+function pathTail(path: string): string {
+  const segments = path.split('/')
+  const name = (segments[segments.length - 1] ?? path).replace(/--worktree$/, '')
+  return `…${name.length > 8 ? name.slice(-8) : name}`
 }
 
 /** The management page, as the Settings panel registers it. */
@@ -55,6 +83,94 @@ function originLabel(origin: WorktreeOrigin, t: ConsoleProps['t']): string {
   }
 }
 
+/** The reason Git would refuse a removal, or undefined when it would run. */
+function removalRefusal(row: WorktreeRow): 'primary' | 'locked' | undefined {
+  if (row.primary) return 'primary'
+  if (row.locked) return 'locked'
+  return undefined
+}
+
+/** One worktree row, with the hover card its branch cell owns. */
+function WorktreeTableRow({ row, busy, copied, t, reveal, onCopy, onReveal, onRemove }: {
+  row: WorktreeRow
+  busy: boolean
+  copied: boolean
+  t: ConsoleProps['t']
+  reveal: ((path: string) => Promise<boolean>) | undefined
+  onCopy: (path: string) => void
+  onReveal: (path: string) => void
+  onRemove: () => void
+}) {
+  // The row owns the anchor the card is sized from, so the card follows the
+  // branch column rather than the width of the branch name inside it.
+  const cell = useRef<HTMLElement | null>(null)
+  const refusal = removalRefusal(row)
+  return <tr>
+    <td className={css.branchCell} ref={(node) => { cell.current = node }}>
+      <HoverCard
+        variant="preview"
+        widthAnchorRef={cell}
+        openDelayMs={200}
+        anchor={<span className={css.branch}>
+          <IconBranchOutlineRegular className={css.branchGlyph} size={13} />
+          {row.branch === null
+            ? <>
+              <span className={css.detached}>{t('detached')}</span>
+              <span className={css.tail}>{pathTail(row.path)}</span>
+            </>
+            : <span className={css.name}>{row.branch}</span>}
+          {row.primary && <Tag tone="neutral">{t('primary')}</Tag>}
+          {row.locked && <Tag tone="outline">{t('locked')}</Tag>}
+          {row.outsideRepository && <Tag tone="outline">{t('outsideRepository')}</Tag>}
+          {row.stale && <Tag tone="danger">{t('stale')}</Tag>}
+        </span>}
+        content={<div className={css.card}>
+          <p className={css.cardPath}>{row.path}</p>
+          {row.stale && <p className={css.cardWarn}>
+            <IconWarningTriangleOutlineRegular size={11} />
+            <span>{t('staleCardHint')}</span>
+          </p>}
+          <div className={css.cardFoot}>
+            <span className={css.cardMeta}>{shortCommit(row.head)}</span>
+            <span className={css.cardActions}>
+              <button type="button" className={css.cardAction} onClick={() => { onCopy(row.path) }}>
+                {copied ? t('copied') : t('copyPath')}
+              </button>
+              {reveal !== undefined && !row.stale && <button
+                type="button"
+                className={css.cardAction}
+                onClick={() => { onReveal(row.path) }}
+              >{t('reveal')}</button>}
+            </span>
+          </div>
+        </div>}
+      />
+    </td>
+    <td className={css.changesCell}>
+      {row.stale
+        ? <span className={css.dimmed}>—</span>
+        : row.dirtyFiles.length === 0
+          ? <span className={css.clean}>{t('clean')}</span>
+          : <Tag tone="warning" className={css.changedTag}>
+            <span className={css.dot} />
+            {t('changedCount', { count: row.dirtyFiles.length })}
+          </Tag>}
+    </td>
+    <td className={`${css.sourceCell} ${css.sourceText}`}>
+      {row.primary ? '—' : originLabel(row.origin, t)}
+    </td>
+    <td className={css.actionsCell}>
+      <button
+        type="button"
+        className={css.remove}
+        disabled={busy || refusal !== undefined}
+        title={refusal === undefined ? undefined : t(refusal)}
+        onClick={onRemove}
+      >{t('remove')}</button>
+    </td>
+  </tr>
+}
+
 function Console(props: ConsoleProps) {
   const { t } = props
   const [repositories, setRepositories] = useState<readonly RepositoryRows[] | undefined>(undefined)
@@ -66,6 +182,9 @@ function Console(props: ConsoleProps) {
   const [notice, setNotice] = useState<string | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [refreshToken, setRefreshToken] = useState(0)
+  /** Path whose copy action just succeeded, for the card's own feedback. */
+  const [copied, setCopied] = useState<string | undefined>(undefined)
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Latest-ref so the load effect depends on the refresh token alone: the face
   // is rebuilt on each render, and depending on it directly would refetch in a
@@ -88,11 +207,34 @@ function Console(props: ConsoleProps) {
     return () => { controller.abort() }
   }, [refreshToken])
 
+  useEffect(() => () => {
+    if (copiedTimer.current !== null) clearTimeout(copiedTimer.current)
+  }, [])
+
   const refresh = useCallback(() => {
     setFailure(undefined)
     setNotice(undefined)
     setRefreshToken(token => token + 1)
   }, [])
+
+  const copyPath = useCallback((path: string) => {
+    void writeClipboard(path).then((accepted) => {
+      if (!accepted) return
+      setCopied(path)
+      if (copiedTimer.current !== null) clearTimeout(copiedTimer.current)
+      copiedTimer.current = setTimeout(() => { setCopied(undefined) }, COPIED_MS)
+    })
+  }, [])
+
+  const reveal = props.reveal
+
+  const showInFileManager = useCallback((path: string) => {
+    if (reveal === undefined) return
+    setFailure(undefined)
+    void reveal(path).then((shown) => {
+      if (!shown) setNotice(t('revealFailed'))
+    })
+  }, [reveal, t])
 
   async function runPrune(repositoryId: string): Promise<void> {
     setBusy(true)
@@ -136,6 +278,7 @@ function Console(props: ConsoleProps) {
       path: row.path,
       files: row.dirtyFiles,
       ignoredCount: row.ignoredFiles.length,
+      stale: row.stale,
     })
   }
 
@@ -154,7 +297,13 @@ function Console(props: ConsoleProps) {
         </h3>
         <p className={css.hint}>{t('sectionHint')}</p>
       </div>
-      <Button size="sm" disabled={busy} onClick={refresh}>{t('refresh')}</Button>
+      <Button
+        size="sm"
+        variant="outline"
+        icon={<IconRefreshOutlineRegular size={14} />}
+        disabled={busy}
+        onClick={refresh}
+      >{t('refresh')}</Button>
     </header>
 
     {failure !== undefined && <p role="status" className={css.notice}>{describeFailure(failure, t('failed'))}</p>}
@@ -164,9 +313,9 @@ function Console(props: ConsoleProps) {
 
     {repositories !== undefined && repositories.length === 0 && <p className={css.notice}>{t('repositoriesEmpty')}</p>}
 
-    {repositories !== undefined && repositories.length > 0 && <div className={css.columns}>
+    {repositories !== undefined && repositories.length > 0 && <div className={css.panes}>
       <div>
-        <p className={css.hint}>{t('repositories')}</p>
+        <p className={css.paneLabel}><span className={css.paneLabelText}>{t('repositories')}</span></p>
         <ul className={css.repositoryList}>
           {repositories.map(repository => <li key={repository.id}>
             <button
@@ -182,13 +331,15 @@ function Console(props: ConsoleProps) {
         </ul>
       </div>
 
-      <div>
+      <div className={css.worktreePane}>
         {selected === undefined
           ? <p className={css.notice}>{t('selectRepository')}</p>
           : <>
-            <div className={css.toolbar}>
-              <span className={css.hint}>{t('worktrees')}</span>
-              <Button size="sm" disabled={busy} onClick={() => { void runPrune(selected.id) }}>{t('prune')}</Button>
+            <div className={css.paneLabel}>
+              <span className={css.paneLabelText}>{t('worktreesIn', { repository: selected.title })}</span>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => { void runPrune(selected.id) }}>
+                {t('prune')}
+              </Button>
             </div>
             {selected.worktrees.length === 0
               ? <p className={css.notice}>{t('worktreesEmpty')}</p>
@@ -196,36 +347,23 @@ function Console(props: ConsoleProps) {
                 <thead>
                   <tr>
                     <th>{t('branch')}</th>
-                    <th>{t('head')}</th>
-                    <th>{t('changes')}</th>
-                    <th>{t('source')}</th>
-                    <th />
+                    <th className={css.changesCell}>{t('changes')}</th>
+                    <th className={css.sourceCell}>{t('source')}</th>
+                    <th className={css.actionsCell} />
                   </tr>
                 </thead>
                 <tbody>
-                  {selected.worktrees.map(row => <tr key={row.path}>
-                    <td>
-                      <div>{row.branch ?? t('detached')}</div>
-                      <div className={css.path}>{row.path}</div>
-                      {row.stale && <p className={css.notice}>{t('stale')} — {t('staleHint')}</p>}
-                    </td>
-                    <td className={css.commit}>{shortCommit(row.head)}</td>
-                    <td>
-                      {row.dirtyFiles.length === 0
-                        ? <span className={css.badges}><Tag tone="neutral">{t('changedCount', { count: 0 })}</Tag></span>
-                        : t('changedCount', { count: row.dirtyFiles.length })}
-                    </td>
-                    <td>{originLabel(row.origin, t)}</td>
-                    <td>
-                      {row.locked && <Tag tone="neutral">{t('locked')}</Tag>}
-                      {row.outsideRepository && <Tag tone="neutral">{t('outsideRepository')}</Tag>}
-                      {!row.stale && !row.locked && <Button
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => { requestRemoval(selected.id, row) }}
-                      >{t('remove')}</Button>}
-                    </td>
-                  </tr>)}
+                  {selected.worktrees.map(row => <WorktreeTableRow
+                    key={row.path}
+                    row={row}
+                    busy={busy}
+                    copied={copied === row.path}
+                    t={t}
+                    reveal={reveal}
+                    onCopy={copyPath}
+                    onReveal={showInFileManager}
+                    onRemove={() => { requestRemoval(selected.id, row) }}
+                  />)}
                 </tbody>
               </table>}
           </>}
@@ -253,6 +391,7 @@ function Console(props: ConsoleProps) {
       )}
     >
       <p className={css.hint}>{pending.path} — {t('removeConfirmHint')}</p>
+      {pending.stale && <p className={css.hint}>{t('staleCardHint')}</p>}
       {pending.files.length > 0 && <>
         <p className={css.hint}>{t('removeLostFiles')}</p>
         <ul className={css.files}>

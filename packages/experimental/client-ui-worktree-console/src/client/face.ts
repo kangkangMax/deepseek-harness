@@ -33,6 +33,47 @@ export interface ConsoleInjected {
     force: boolean,
     signal: AbortSignal,
   ) => Promise<RemoveOutcome>
+  /**
+   * Show one checkout in the Host desktop's file manager.
+   *
+   * Optional, and absent unless the Session Remote is mounted: the reveal is
+   * that namespace's own capability, so a browser deployment without a desktop
+   * Host answers `undefined` here and the page then offers only the copy.
+   * @param path - absolute checkout directory.
+   * @returns whether the Host handed the path to a file manager.
+   */
+  readonly reveal?: ((path: string) => Promise<boolean>) | undefined
+}
+
+/** The slice of the Session Remote a reveal goes through. */
+interface RevealRemote {
+  readonly openWorkspacePath?: (
+    request: { readonly path: string; readonly action: 'reveal' },
+  ) => Promise<{ readonly ok: boolean }>
+}
+
+/**
+ * Build the reveal action over the Session Remote, when this deployment has one.
+ *
+ * Read through `ctx.get` rather than injected: the reveal belongs to another
+ * plugin, and requiring it would turn "no desktop here" into "this page never
+ * activates".
+ * @param ctx - client runtime.
+ * @returns the reveal action, or undefined when no Session Remote is mounted.
+ */
+function createReveal(ctx: Context): ((path: string) => Promise<boolean>) | undefined {
+  const remote = ctx.get('remote.session') as RevealRemote | undefined
+  if (remote?.openWorkspacePath === undefined) return undefined
+  const reveal = remote.openWorkspacePath
+  return async (path) => {
+    try {
+      return (await reveal.call(remote, { path, action: 'reveal' })).ok
+    } catch {
+      // A rejection and a refusal are the same outcome to the page: the
+      // directory was not shown, and it says so rather than failing silently.
+      return false
+    }
+  }
 }
 
 /**
@@ -57,6 +98,7 @@ export function createConsoleFace(ctx: Context): ConsoleInjected {
       if (!result.ok) throw result.error
       return result.value
     },
+    reveal: createReveal(ctx),
   }
 }
 

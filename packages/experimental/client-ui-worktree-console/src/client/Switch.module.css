@@ -10,16 +10,18 @@
 .switch {
   font-size: 12px;
   line-height: 16px;
-  color: var(--dsh-color-text-secondary);
+  color: var(--dsw-alias-label-secondary);
 }
 
 .switch:has(input:checked) {
-  color: var(--dsh-color-text-primary);
+  color: var(--dsw-alias-label-primary);
 }
 
+/* The tool row is short and the Host's reason is a whole command line, so the
+   text ellipsizes and the element carries the full sentence for a hover. */
 .failure {
   overflow: hidden;
-  color: var(--dsh-color-text-secondary);
+  color: var(--dsw-alias-label-secondary);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;

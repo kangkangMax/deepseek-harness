@@ -2,10 +2,15 @@
  * The composer's worktree switch, in the tool row beside the plan and
  * permission controls.
  *
- * Two states share one seat: an empty Session gets a toggle that arms it so its
- * first step materializes a worktree, and a Session already in one gets a
- * read-only badge naming the branch. A Session that is neither renders nothing
- * — the tool row is not the place to explain what the user cannot do here.
+ * It renders for two states. An empty Session gets a toggle that arms it so
+ * its first step materializes a worktree. A Session whose armed step the Host
+ * refused gets the reason: the arm is spent and the turn ends before the model
+ * is called, so that reason is the only trace the attempt left, and it is
+ * re-read when the run ends. A Session already in a worktree says nothing here
+ * — naming the branch is the context strip's job, one row below the composer,
+ * and printing it twice made the tool row claim a fact the strip then repeated.
+ * A Session that is neither renders nothing: the tool row is not the place to
+ * explain what the user cannot do here.
  *
  * Arming also asks *what to start from*. The choice appears only once the
  * intent exists: an unchecked box has nothing to qualify yet, and a base picker
@@ -14,8 +19,8 @@
  * @module @deepseek-ai/dsh-experimental-client-ui-worktree-console/src/client/Switch
  */
 
-import { useEffect, useRef, useState } from 'react'
-import { Checkbox, Menu, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Checkbox, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -47,6 +52,7 @@ export type WorktreeSwitchProps =
 export function WorktreeSwitch(props: WorktreeSwitchProps) {
   const { sessionId, t } = props
   const blank = props.useSession(value => value.blank)
+  const running = props.useSession(value => value.running)
   const [state, setState] = useState<WorktreeSessionState | undefined>(undefined)
   const [failure, setFailure] = useState<unknown>(undefined)
   const [busy, setBusy] = useState(false)
@@ -60,18 +66,37 @@ export function WorktreeSwitch(props: WorktreeSwitchProps) {
   face.current = props
   useEffect(() => () => { alive.current = false }, [])
 
+  /** One read of the Session's arming state, cancellable with the caller. */
+  const readState = useCallback((signal: AbortSignal): void => {
+    void face.current.state(sessionId, signal).then(
+      (next) => { if (alive.current && !signal.aborted) setState(next) },
+      (error: unknown) => { if (alive.current && !signal.aborted) setFailure(error) },
+    )
+  }, [sessionId])
+
   useEffect(() => {
     const controller = new AbortController()
-    void (async () => {
-      try {
-        const next = await face.current.state(sessionId, controller.signal)
-        if (alive.current && !controller.signal.aborted) setState(next)
-      } catch (error: unknown) {
-        if (alive.current && !controller.signal.aborted) setFailure(error)
-      }
-    })()
+    readState(controller.signal)
     return () => { controller.abort() }
-  }, [sessionId])
+  }, [readState])
+
+  // The Host spends the arm before attempting the step, and a refused step ends
+  // the turn before the model is ever called. So the reason for a refusal lives
+  // only in this reading, and only the end of the run says to read it again:
+  // without that, a refused arming is a turn that completes with nothing in it.
+  const ranFor = useRef(false)
+  useEffect(() => {
+    if (running) {
+      ranFor.current = true
+      return
+    }
+    const spent = ranFor.current
+    ranFor.current = false
+    if (!spent) return
+    const controller = new AbortController()
+    readState(controller.signal)
+    return () => { controller.abort() }
+  }, [readState, running])
 
   // The list is read only while the picker can be on screen. A bare session
   // that was never armed has no base to show, and reading for it would spend a
@@ -101,9 +126,14 @@ export function WorktreeSwitch(props: WorktreeSwitchProps) {
     </span>
   }
 
-  if (state.worktree !== null) {
+  // A refused arming is spent: the Host already deleted the intent, and the
+  // Session is no longer empty, so there is nothing a toggle could arm. The row
+  // says why instead — including once the Session has left the blank state,
+  // which is the only place this reason ever appears.
+  if (state.failure !== null) {
+    const reason = t('switchArmFailed', { reason: state.failure })
     return <span className={css.wrap}>
-      <Tag tone="neutral">{t('switchWorking', { branch: state.worktree.branch })}</Tag>
+      <span className={css.failure} role="status" title={reason}>{reason}</span>
     </span>
   }
 
@@ -207,9 +237,6 @@ export function WorktreeSwitch(props: WorktreeSwitchProps) {
       selectedId={base === undefined ? HEAD_ID : `${BRANCH_PREFIX}${base}`}
       onSelect={select}
     />}
-    {state.failure !== null && <span className={css.failure} role="status">
-      {t('switchArmFailed', { reason: state.failure })}
-    </span>}
     {failure !== undefined && <span className={css.failure} role="status">
       {describeFailure(failure, t('failed'))}
     </span>}

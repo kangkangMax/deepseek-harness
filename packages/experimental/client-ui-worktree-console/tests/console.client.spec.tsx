@@ -30,7 +30,7 @@ function row(dirtyFiles: readonly string[], over: Partial<ConsoleSnapshot['repos
     path: WORKTREE,
     branch: 'brave-otter',
     head: 'abcdef0123456789abcdef0123456789abcdef01',
-    present: true,
+    primary: false,
     stale: false,
     dirtyFiles,
     ignoredFiles: [],
@@ -45,15 +45,17 @@ function renderSection(options: { worktrees?: readonly ReturnType<typeof row>[] 
   const list = vi.fn(async () => snapshot(options.worktrees ?? [row([])]))
   const prune = vi.fn(async () => ({ pruned: [] }))
   const removeWorktree = vi.fn(async () => ({ removed: WORKTREE }))
+  const reveal = vi.fn(async () => true)
   const props = {
     close: () => {},
     t: literalT(),
     list,
     prune,
     removeWorktree,
+    reveal,
   } as ConsoleProps
   render(<WorktreeConsolePage {...props} />)
-  return { list, prune, removeWorktree }
+  return { list, prune, removeWorktree, reveal }
 }
 
 describe('worktree management page', () => {
@@ -64,19 +66,46 @@ describe('worktree management page', () => {
     expect(list).toHaveBeenCalled()
   })
 
-  it('lists the worktree with the convention that created it', async () => {
+  // The branch is the only column that identifies a row, so it is the column
+  // that stays readable; the directory and the commit live in its hover card.
+  it('shows the full directory, the commit, and both card actions on hover', async () => {
+    const { reveal } = renderSection()
+
+    fireEvent.pointerOver(await screen.findByText('brave-otter'))
+
+    expect(await screen.findByText(WORKTREE)).toBeTruthy()
+    expect(screen.getByText('abcdef01')).toBeTruthy()
+    expect(screen.getByText(en.copyPath)).toBeTruthy()
+    fireEvent.click(screen.getByText(en.reveal))
+    await waitFor(() => { expect(reveal).toHaveBeenCalledWith(WORKTREE) })
+  })
+
+  it('names the convention that created the checkout', async () => {
     renderSection()
 
-    expect(await screen.findByText('brave-otter')).toBeTruthy()
-    expect(screen.getByText(WORKTREE)).toBeTruthy()
-    expect(screen.getByText(en.originOfficial)).toBeTruthy()
-    expect(screen.getByText('abcdef01')).toBeTruthy()
+    expect(await screen.findByText(en.originOfficial)).toBeTruthy()
   })
 
   it('reports a repository without worktrees as an empty list', async () => {
     renderSection({ worktrees: [] })
 
     expect(await screen.findByText(en.worktreesEmpty)).toBeTruthy()
+  })
+
+  // The row is the whole inventory, so the repository's own checkout appears
+  // with the one action Git would refuse disabled rather than missing.
+  it('shows the repository’s own checkout with no usable removal', async () => {
+    renderSection({
+      worktrees: [
+        row([], { path: '/repos/dsh', branch: 'main', primary: true, origin: 'manual' }),
+        row([]),
+      ],
+    })
+
+    expect(await screen.findByText('main')).toBeTruthy()
+    expect(screen.getByText(en.primary)).toBeTruthy()
+    const [primaryRemove] = screen.getAllByText(en.remove)
+    expect((primaryRemove?.closest('button') as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('names the files at risk and sends nothing when the user cancels', async () => {
@@ -116,7 +145,8 @@ describe('worktree management page', () => {
   it('offers removal for a checkout registered outside the repository', async () => {
     renderSection({ worktrees: [row([], { outsideRepository: true })] })
 
-    fireEvent.click(await screen.findByText(en.remove))
+    expect(await screen.findByText(en.outsideRepository)).toBeTruthy()
+    fireEvent.click(screen.getByText(en.remove))
     expect(await screen.findByText(en.removeConfirm)).toBeTruthy()
   })
 
@@ -137,13 +167,38 @@ describe('worktree management page', () => {
     })
   })
 
-  // Git refuses a locked checkout without a second --force, so the row reports
-  // the lock instead of offering an action that cannot succeed.
-  it('reports a locked checkout instead of offering removal', async () => {
+  // Git refuses a locked checkout without a second --force, so the row keeps
+  // its button in place and disables it rather than vanishing.
+  it('reports a locked checkout with its removal disabled', async () => {
     renderSection({ worktrees: [row([], { locked: true })] })
 
     expect(await screen.findByText(en.locked)).toBeTruthy()
-    expect(screen.queryByText(en.remove)).toBeNull()
+    const remove = screen.getByText(en.remove).closest('button') as HTMLButtonElement
+    expect(remove.disabled).toBe(true)
+  })
+
+  // A stale registration is bookkeeping with no directory behind it, so the
+  // row still offers the one repair that applies to it.
+  it('offers removal for a stale registration and says nothing is on disk', async () => {
+    const { removeWorktree } = renderSection({ worktrees: [row([], { stale: true })] })
+
+    expect(await screen.findByText(en.stale)).toBeTruthy()
+    expect(screen.getByText('—')).toBeTruthy()
+    fireEvent.click(screen.getByText(en.remove))
+    fireEvent.click(await screen.findByText(en.removeConfirmAction))
+
+    await waitFor(() => {
+      expect(removeWorktree).toHaveBeenCalledWith('wt', WORKTREE, false, expect.anything())
+    })
+  })
+
+  // Zero changes are stated quietly; only a row with something to lose earns a
+  // coloured tag, which is what makes that tag readable at a glance.
+  it('states a clean checkout quietly and a dirty one as a warning tag', async () => {
+    renderSection({ worktrees: [row([]), row([], { path: '/repos/dsh/.agents/worktrees/calm-heron', branch: 'calm-heron', dirtyFiles: ['a', 'b', 'c'] })] })
+
+    expect(await screen.findByText(en.clean)).toBeTruthy()
+    expect(screen.getByText('3 changed')).toBeTruthy()
   })
 
   it('clears stale registrations for the selected repository', async () => {
@@ -155,7 +210,7 @@ describe('worktree management page', () => {
     expect(await screen.findByText(en.pruneNone)).toBeTruthy()
   })
 
-  // The Plugins page draws a section's own chrome (title, icon, crumb — see
+  // The Settings page draws a section's own chrome (title, icon, crumb — see
   // ui-plugin-manager slot-contract), so the mark beside the title is the only
   // place this section can carry an icon at all.
   it('carries a branch glyph beside the section title', async () => {
