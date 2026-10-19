@@ -17,7 +17,7 @@ afterEach(async () => {
 
 /** The listener reads `agent.session.id` and hands the agent to the runtime, so a carrier stands in for the loop. */
 function agent(): Agent {
-  return { id: SESSION, session: { id: SESSION } } as unknown as Agent
+  return { id: SESSION, session: { id: SESSION } } as Agent
 }
 
 function entered(): EnteredWorktree {

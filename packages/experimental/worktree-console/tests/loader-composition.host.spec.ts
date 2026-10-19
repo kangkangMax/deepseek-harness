@@ -58,13 +58,16 @@ describe('real Loader composition', () => {
       ['@deepseek-ai/dsh-experimental-worktree-console', WorktreeConsole],
       ['fixture-observer', observer],
     ])
-    context.loader.internal = {
+    // Partial on the way in: the fixture supplies the two members the Loader
+    // reaches for (the version tag and `import`), and says so.
+    const internal: Partial<NonNullable<typeof context.loader.internal>> = {
       version: 'v2',
       async import(specifier: string) {
         if (!modules.has(specifier)) throw new Error(`unexpected Loader import: ${specifier}`)
         return modules.get(specifier)
       },
-    } as unknown as NonNullable<typeof context.loader.internal>
+    }
+    context.loader.internal = internal as NonNullable<typeof context.loader.internal>
     await context.loader.create({
       name: 'cordis:include',
       config: { path: pathToFileURL(configPath).href },

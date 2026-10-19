@@ -42,7 +42,9 @@ afterEach(() => { answered.length = 0 })
 async function runtime(): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(TypertRegistry)
-  ctx.provide('connection', {
+  // Partial on the way in, so the fixture states which members it stands in for
+  // instead of erasing the whole handle behind an `unknown` hop.
+  const connection: Partial<ConnectionHandle> = {
     rpc: {
       call: async (_path: string, endpoint: string) => {
         answered.push(endpoint)
@@ -54,7 +56,8 @@ async function runtime(): Promise<Context> {
     },
     registerGenerationSource: () => () => {},
     start: () => ({ stop: () => {} }),
-  } as unknown as ConnectionHandle)
+  }
+  ctx.provide('connection', connection as ConnectionHandle)
   await ctx.plugin({ inject: remoteInject, apply: applyRemoteService })
   ctx.provide('locale', new LocaleRuntime(ctx))
   await ctx.plugin(SlotRegistry)
@@ -106,7 +109,10 @@ it('reaches the Host through the scope the composer seat registered', async () =
   await ctx.plugin({ inject: [...inject], apply })
 
   const entry = ctx.slots.entries('conversation.input.left')[0]
-  const face = (entry?.inject as unknown as () => SwitchFace)()
+  if (entry?.inject === undefined) throw new Error('the composer seat registered no inject face')
+  // The registry type-erases the face to `Record<string, unknown>`; name the one
+  // member this spec reads instead of asserting the whole `SwitchFace`.
+  const face = entry.inject() as { state: SwitchFace['state'] }
   const state = await face.state('session-1', new AbortController().signal)
 
   // Unwrapped: `state` answers with the Session's own shape, not the transport

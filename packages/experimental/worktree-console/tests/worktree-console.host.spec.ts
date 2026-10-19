@@ -39,7 +39,7 @@ describe('worktree console Remote', () => {
     expect(snapshot.repositories).toHaveLength(1)
     expect(snapshot.repositories[0]?.path).toBe(fixture)
     expect(snapshot.repositories[0]?.worktrees).toEqual([
-      { path: one, branch: 'brave-otter', head: expect.stringMatching(/^[0-9a-f]{40}$/) as unknown as string,
+      { path: one, branch: 'brave-otter', head: expect.stringMatching(/^[0-9a-f]{40}$/) as string,
         stale: false, dirtyFiles: [], ignoredFiles: [], outsideRepository: false, locked: false, origin: 'official' },
     ])
   })

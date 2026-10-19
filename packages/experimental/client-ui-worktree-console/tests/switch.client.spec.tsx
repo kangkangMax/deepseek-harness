@@ -9,11 +9,14 @@ afterEach(cleanup)
 
 /** Interpolate the real English dictionary, so the spec asserts shipped copy. */
 function literalT(): WorktreeSwitchProps['t'] {
-  return ((key: string, params?: Record<string, unknown>) => {
-    const template = (en as unknown as Record<string, string>)[key] ?? key
+  return (key: string, params?: Record<string, unknown>) => {
+    const template = (en as Record<string, string>)[key] ?? key
     if (params === undefined) return template
-    return template.replace(/\{(\w+)\}/g, (_match, name: string) => String(params[name] ?? ''))
-  }) as WorktreeSwitchProps['t']
+    return template.replace(/\{(\w+)\}/g, (_match, name: string) => {
+      const value = params[name]
+      return typeof value === 'string' || typeof value === 'number' ? String(value) : ''
+    })
+  }
 }
 
 function idle(over: Partial<WorktreeSessionState> = {}): WorktreeSessionState {
@@ -50,7 +53,7 @@ function renderSwitch(
     disarm,
     state,
     branches,
-  } as unknown as WorktreeSwitchProps
+  } as WorktreeSwitchProps
   render(<WorktreeSwitch {...props} />)
   return { arm, disarm, state, branches }
 }
@@ -69,6 +72,7 @@ describe('composer worktree switch', () => {
     fireEvent.click(await screen.findByRole('checkbox'))
 
     await waitFor(() => { expect(arm).toHaveBeenCalledWith('session-1', {}, expect.anything()) })
+    // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- getByRole answers an HTMLElement.
     await waitFor(() => { expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(true) })
   })
 

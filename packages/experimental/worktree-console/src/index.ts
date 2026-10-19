@@ -228,6 +228,7 @@ export class WorktreeConsole extends TypertRemoteService {
    * @returns this Session's intent and outcome.
    */
   @Remote({ name: 'arm', resources: { session: sessionResource } })
+  // oxlint-disable-next-line typescript/require-await -- the wire shape is a Promise and this handler settles without awaiting anything.
   async arm(sessionId: string, request: WorktreeArmRequest, signal: AbortSignal): Promise<WorktreeSessionState> {
     signal.throwIfAborted()
     if (worktreeRuntime(this.ctx) === undefined) {
@@ -253,6 +254,7 @@ export class WorktreeConsole extends TypertRemoteService {
    * @returns this Session's intent and outcome.
    */
   @Remote({ name: 'disarm', resources: { session: sessionResource } })
+  // oxlint-disable-next-line typescript/require-await -- the wire shape is a Promise and this handler settles without awaiting anything.
   async disarm(sessionId: string, signal: AbortSignal): Promise<WorktreeSessionState> {
     signal.throwIfAborted()
     this.armed.delete(sessionId)
@@ -266,6 +268,7 @@ export class WorktreeConsole extends TypertRemoteService {
    * @returns the armed flag, the checkout once one exists, and any failure.
    */
   @Remote({ name: 'state', resources: { session: sessionResource } })
+  // oxlint-disable-next-line typescript/require-await -- the wire shape is a Promise and this handler settles without awaiting anything.
   async state(sessionId: string, signal: AbortSignal): Promise<WorktreeSessionState> {
     signal.throwIfAborted()
     return this.stateOf(sessionId)

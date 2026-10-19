@@ -11,11 +11,14 @@ const WORKTREE = '/repos/dsh/.agents/worktrees/brave-otter'
 
 /** Interpolate the real English dictionary, so the spec asserts shipped copy. */
 function literalT(): ConsoleProps['t'] {
-  return ((key: string, params?: Record<string, unknown>) => {
-    const template = (en as unknown as Record<string, string>)[key] ?? key
+  return (key: string, params?: Record<string, unknown>) => {
+    const template = (en as Record<string, string>)[key] ?? key
     if (params === undefined) return template
-    return template.replace(/\{(\w+)\}/g, (_match, name: string) => String(params[name] ?? ''))
-  }) as ConsoleProps['t']
+    return template.replace(/\{(\w+)\}/g, (_match, name: string) => {
+      const value = params[name]
+      return typeof value === 'string' || typeof value === 'number' ? String(value) : ''
+    })
+  }
 }
 
 function snapshot(worktrees: ConsoleSnapshot['repositories'][number]['worktrees']): ConsoleSnapshot {
@@ -48,7 +51,7 @@ function renderSection(options: { worktrees?: readonly ReturnType<typeof row>[] 
     list,
     prune,
     removeWorktree,
-  } as unknown as ConsoleProps
+  } as ConsoleProps
   render(<WorktreeConsolePage {...props} />)
   return { list, prune, removeWorktree }
 }

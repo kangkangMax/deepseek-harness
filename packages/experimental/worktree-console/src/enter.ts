@@ -22,5 +22,5 @@ import type { WorktreeService } from '@deepseek-ai/dsh-experimental-worktree'
  * @returns the runtime, or undefined when the worktree plugin is absent.
  */
 export function worktreeRuntime(ctx: Context): WorktreeService | undefined {
-  return ctx.get('worktrees') as WorktreeService | undefined
+  return ctx.get('worktrees')
 }
