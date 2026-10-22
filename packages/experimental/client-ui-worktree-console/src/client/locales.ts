@@ -19,12 +19,19 @@ export const en = {
   selectRepository: 'Select a repository to see its worktrees.',
 
   branch: 'Branch',
+  branchDirectory: 'Branch / directory',
+  directory: 'Working directory',
+  worktreeCount: '{count} worktrees',
+  actions: 'Actions',
+  primaryProtected: 'Primary worktree',
+  lockedProtected: 'Locked worktree',
   head: 'Commit',
   changes: 'Changes',
   source: 'Source',
 
   detached: 'detached',
   changedCount: '{count} changed',
+  ignoredCount: '{count} ignored',
   clean: 'clean',
 
   originOfficial: 'Official',
@@ -44,7 +51,10 @@ export const en = {
 
   copyPath: 'Copy path',
   copied: 'Copied',
-  reveal: 'Reveal',
+  copyFailed: 'Could not copy the path. Try again.',
+  close: 'Close',
+  reveal: 'Open directory',
+  revealDone: 'Opened directory.',
 
   refresh: 'Refresh',
   loading: 'Loading worktrees…',
@@ -66,6 +76,12 @@ export const en = {
   removeConfirmAction: 'Remove and discard changes',
   removeCancel: 'Cancel',
   removeDone: 'Removed {path}.',
+  removeSessionsHint: 'Associated sessions ({count}) will be archived and hidden from the session list. Chat history will be retained.',
+  removeSessionsAcknowledge: 'Also archive the associated sessions',
+  removeSessionsChanged: 'Associated sessions changed. Refresh the worktrees and confirm again.',
+  removeSessionsDenied: 'You need access to every associated session to remove this worktree.',
+  removeSessionsFailed: 'Could not archive the associated sessions. Stop their active work and try again.',
+  removeIncomplete: 'Removal did not finish; some sessions were archived. Refresh before retrying. Chat history is retained.',
 
   failed: 'The request failed.',
   revealFailed: 'Could not show this directory in the file manager.',
@@ -101,12 +117,19 @@ export const zh: typeof en = {
   selectRepository: '选择一个仓库以查看它的工作树。',
 
   branch: '分支',
+  branchDirectory: '分支 / 目录',
+  directory: '工作目录',
+  worktreeCount: '{count} 个工作树',
+  actions: '操作',
+  primaryProtected: '主工作树不可删除',
+  lockedProtected: '已锁定，不可删除',
   head: '提交',
   changes: '改动',
   source: '来源',
 
   detached: '游离',
   changedCount: '{count} 项改动',
+  ignoredCount: '{count} 项已忽略',
   clean: '干净',
 
   originOfficial: '官方',
@@ -123,7 +146,10 @@ export const zh: typeof en = {
 
   copyPath: '复制路径',
   copied: '已复制',
-  reveal: '显示位置',
+  copyFailed: '无法复制路径，请重试',
+  close: '关闭',
+  reveal: '打开目录',
+  revealDone: '已打开目录',
 
   refresh: '刷新',
   loading: '正在读取工作树…',
@@ -145,6 +171,12 @@ export const zh: typeof en = {
   removeConfirmAction: '删除并丢弃改动',
   removeCancel: '取消',
   removeDone: '已删除 {path}。',
+  removeSessionsHint: '将同时归档 {count} 个关联会话，并从会话列表隐藏，聊天记录会保留',
+  removeSessionsAcknowledge: '同时归档关联会话',
+  removeSessionsChanged: '关联会话已发生变化，请刷新工作树并重新确认',
+  removeSessionsDenied: '需要有权访问所有关联会话，才能删除此工作树',
+  removeSessionsFailed: '无法归档关联会话，请停止会话中正在运行的任务后重试',
+  removeIncomplete: '删除未完成，部分会话已归档，聊天记录仍保留。请刷新后再重试',
 
   failed: '请求失败。',
   revealFailed: '无法在文件管理器中显示该目录。',

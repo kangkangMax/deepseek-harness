@@ -118,11 +118,7 @@ export interface GitPort {
 }
 
 /**
- * Parse `git worktree list --porcelain`.
- *
- * Records are recognised by their `worktree ` line rather than by a blank-line
- * separator, so a trailing blank line or a `prunable <reason>` that wraps
- * cannot merge two registrations.
+ * Parse NUL-delimited `git worktree list --porcelain -z`, preserving literal paths.
  * @param stdout - command output.
  * @returns one entry per registration, in the order Git printed them.
  */
@@ -137,7 +133,7 @@ export function parseWorktreeList(stdout: string): readonly RegisteredWorktree[]
     prunable: boolean
   } | undefined
   const flush = (): void => { if (current !== undefined) entries.push(current) }
-  for (const line of stdout.replaceAll('\r\n', '\n').split('\n')) {
+  for (const line of stdout.split('\0')) {
     if (line.startsWith('worktree ')) {
       flush()
       current = { path: line.slice('worktree '.length), head: '', branch: null, bare: false, locked: false, prunable: false }
@@ -175,7 +171,7 @@ export function parseStatusPorcelain(stdout: string): { changed: readonly string
     const code = entry.slice(0, 2)
     const path = entry.slice(3)
     // A rename or copy record carries the source as the next token.
-    if (code.startsWith('R') || code.startsWith('C')) index++
+    if (/[RC]/.test(code)) index++
     if (code === '!!') ignored.push(path)
     else changed.push(path)
   }
@@ -255,6 +251,7 @@ export function createGitPort(
     const argv = policy.mode === 'danger-full-access'
       ? command
       : (await ctx.sandbox.confine(command, { ...policy, mode: policy.mode }, bound)).argv
+    bound.throwIfAborted()
     const child = ctx.subprocess.spawn({
       argv,
       cwd,
@@ -269,6 +266,7 @@ export function createGitPort(
     })
     try {
       const outcome = await child.done
+      bound.throwIfAborted()
       // The spawn spec above collects both streams.
       const captured = child.collected as Required<SubprocessCollectedOutputs>
       const stdout = captured.stdout.readFrom(0)
@@ -297,7 +295,7 @@ export function createGitPort(
       return exitCode === 0 ? stdout.replace(/\r?\n$/, '') : null
     },
     async list(repositoryRoot, signal) {
-      const { stdout } = await runGit(repositoryRoot, repositoryRoot, ['worktree', 'list', '--porcelain'], signal)
+      const { stdout } = await runGit(repositoryRoot, repositoryRoot, ['worktree', 'list', '--porcelain', '-z'], signal)
       return parseWorktreeList(stdout)
     },
     async status(repositoryRoot, worktreePath, signal) {

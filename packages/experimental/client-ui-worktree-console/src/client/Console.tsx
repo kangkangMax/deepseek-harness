@@ -1,22 +1,11 @@
-/**
- * The worktree management page of the Settings panel: the repositories of the
- * profile on the left, the selected repository's worktrees on the right, and the
- * two repairs — clear stale registrations, and remove one worktree.
- *
- * It owns one Settings navigation row, so the page is where a user looks for it
- * rather than at the bottom of a plugin's own detail page.
- *
- * The table is four columns wide and one fact per column. The commit and the
- * full directory are not columns: they are what the branch cell's hover card
- * shows, because the branch name is the only thing that tells two rows apart,
- * and every pixel spent on a second identifier is a pixel taken from it.
- * @module @deepseek-ai/dsh-experimental-client-ui-worktree-console/src/client/Console
- */
+/** Collapsible repository worktree inventories with details and confirmed removal. */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import clsx from 'clsx'
 import {
-  Button, HoverCard, IconBranchOutlineRegular, IconRefreshOutlineRegular, IconWarningTriangleOutlineRegular,
-  Modal, Tag, writeClipboard,
+  Button, IconBranchOutlineRegular, IconChevronRightOutlineRegular, IconCloseOutlineRegular,
+  IconFolderOpenOutlineRegular, IconRefreshOutlineRegular, IconWarningTriangleOutlineRegular,
+  Modal, StateDot, Tag,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -24,6 +13,7 @@ import type {
   RepositoryRows, WorktreeOrigin, WorktreeRow,
 } from '@deepseek-ai/dsh-experimental-worktree-console/types'
 import { describeFailure, type ConsoleInjected } from './face.ts'
+import { DirectoryActions } from './DirectoryActions.tsx'
 import { NS } from './locales.ts'
 import css from './Console.module.css'
 
@@ -43,10 +33,8 @@ interface PendingRemoval {
   readonly ignoredCount: number
   /** The registration has no checkout left, so nothing on disk is at stake. */
   readonly stale: boolean
+  readonly sessionIds: readonly string[]
 }
-
-/** How long the copy action reports its own success. */
-const COPIED_MS = 1_200
 
 /** Shorten a commit for the hover card without hiding which commit it is. */
 function shortCommit(commit: string): string {
@@ -117,71 +105,78 @@ function removalRefusal(row: WorktreeRow): 'primary' | 'locked' | undefined {
   return undefined
 }
 
-/** One worktree row, with the hover card its branch cell owns. */
-function WorktreeTableRow({ row, busy, copied, t, reveal, onCopy, onReveal, onRemove }: {
+/** The row opens details; operation buttons retain their independent actions. */
+function WorktreeTableRow({ row, busy, t, reveal, notify, onRemove }: {
   row: WorktreeRow
   busy: boolean
-  copied: boolean
   t: ConsoleProps['t']
   reveal: ((path: string) => Promise<boolean>) | undefined
-  onCopy: (path: string) => void
-  onReveal: (path: string) => void
+  notify: ConsoleInjected['notify']
   onRemove: () => void
 }) {
-  // The row owns the anchor the card is sized from, so the card follows the
-  // branch column rather than the width of the branch name inside it.
-  const cell = useRef<HTMLElement | null>(null)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const refusal = removalRefusal(row)
-  return <tr>
-    <td className={css.branchCell} ref={(node) => { cell.current = node }}>
-      <HoverCard
-        variant="preview"
-        widthAnchorRef={cell}
-        openDelayMs={200}
-        anchor={<span className={css.branch}>
-          <IconBranchOutlineRegular className={css.branchGlyph} size={13} />
-          {row.branch === null
-            ? <>
-              <span className={css.detached}>{t('detached')}</span>
-              <span className={css.tail}>{pathTail(row.path)}</span>
-            </>
-            : <span className={css.name} title={row.branch}>{middleTruncate(row.branch)}</span>}
-          {row.primary && <Tag tone="neutral">{t('primary')}</Tag>}
-          {row.locked && <Tag tone="outline">{t('locked')}</Tag>}
-          {row.outsideRepository && <span className={css.mark} title={t('outsideRepositoryHint')}>
-            <Tag tone="outline">{t('outsideRepository')}</Tag>
-          </span>}
-          {row.stale && <span className={css.mark} title={t('staleHint')}>
-            <Tag tone="danger">{t('stale')}</Tag>
-          </span>}
+  return <tr
+    tabIndex={0}
+    onClick={(event) => {
+      if (event.target instanceof Node && !event.currentTarget.contains(event.target)) return
+      if (event.target instanceof Element && event.target.closest('button') !== null) return
+      setDetailsOpen(true)
+    }}
+    onKeyDown={(event) => {
+      if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return
+      event.preventDefault()
+      setDetailsOpen(true)
+    }}
+  >
+    <td className={css.branchCell}>
+      <button type="button" className={css.branch} onClick={() => { setDetailsOpen(true) }}>
+        <IconBranchOutlineRegular className={css.branchGlyph} size={13} />
+        {row.branch === null
+          ? <>
+            <span className={css.detached}>{t('detached')}</span>
+            <span className={css.tail}>{pathTail(row.path)}</span>
+          </>
+          : <span className={css.name} title={row.branch}>{middleTruncate(row.branch)}</span>}
+        {row.primary && <Tag tone="neutral">{t('primary')}</Tag>}
+        {row.locked && <Tag tone="outline">{t('locked')}</Tag>}
+        {row.outsideRepository && <span className={css.mark} title={t('outsideRepositoryHint')}>
+          <Tag tone="outline">{t('outsideRepository')}</Tag>
         </span>}
-        content={<div className={css.card}>
+        {row.stale && <span className={css.mark} title={t('staleHint')}>
+          <Tag tone="danger">{t('stale')}</Tag>
+        </span>}
+      </button>
+      <p className={css.rowPath}>{row.path}</p>
+      {detailsOpen && <Modal open headless className={clsx(css.detailsDialog)} onClose={() => { setDetailsOpen(false) }} title={row.branch ?? t('detached')}>
+        <header className={css.detailsHeader}>
+          <h2 className={css.detailsTitle}>{row.branch ?? t('detached')}</h2>
+          <Button size="sm" variant="ghost" aria-label={t('close')} onClick={() => { setDetailsOpen(false) }}>
+            <IconCloseOutlineRegular size={14} />
+          </Button>
+        </header>
+        <div className={css.detailsBody}>
           <p className={css.cardPath}>{row.path}</p>
+          <div className={css.metadata}>
+            <span>{t('source')}: {originLabel(row.origin, t)}</span>
+            <span>{t('head')}: <span>{shortCommit(row.head)}</span></span>
+            {row.ignoredFiles.length > 0 && <span>{t('ignoredCount', { count: row.ignoredFiles.length })}</span>}
+          </div>
           {row.stale && <p className={css.cardWarn}>
-            <IconWarningTriangleOutlineRegular size={11} />
+            <IconWarningTriangleOutlineRegular size={13} />
             <span>{t('staleCardHint')}</span>
           </p>}
-          <div className={css.cardFoot}>
-            <span className={css.cardMeta}>{shortCommit(row.head)}</span>
-            <span className={css.cardActions}>
-              <button type="button" className={css.cardAction} onClick={() => { onCopy(row.path) }}>
-                {copied ? t('copied') : t('copyPath')}
-              </button>
-              {reveal !== undefined && !row.stale && <button
-                type="button"
-                className={css.cardAction}
-                onClick={() => { onReveal(row.path) }}
-              >{t('reveal')}</button>}
-            </span>
-          </div>
-        </div>}
-      />
+        </div>
+        <footer className={css.detailsFooter}>
+          <DirectoryActions path={row.path} t={t} reveal={row.stale ? undefined : reveal} notify={notify} />
+        </footer>
+      </Modal>}
     </td>
     <td className={css.changesCell}>
       {row.stale
         ? <span className={css.dimmed}>—</span>
         : row.dirtyFiles.length === 0
-          ? <span className={css.clean}>{t('clean')}</span>
+          ? <Tag tone={row.ignoredFiles.length > 0 ? 'neutral' : 'success'}>{row.ignoredFiles.length > 0 ? t('ignoredCount', { count: row.ignoredFiles.length }) : t('clean')}</Tag>
           : <Tag tone="warning" className={css.changedTag}>
             <span className={css.dot} />
             {t('changedCount', { count: row.dirtyFiles.length })}
@@ -198,24 +193,59 @@ function WorktreeTableRow({ row, busy, copied, t, reveal, onCopy, onReveal, onRe
         title={refusal === undefined ? undefined : t(refusal)}
         onClick={onRemove}
       >{t('remove')}</button>
+      {refusal !== undefined && <span className={css.removalHint}>{t(refusal === 'primary' ? 'primaryProtected' : 'lockedProtected')}</span>}
     </td>
   </tr>
+}
+
+function RepositoryGroup({ repository, busy, t, reveal, notify, onPrune, onRemove }: {
+  repository: RepositoryRows
+  busy: boolean
+  t: ConsoleProps['t']
+  onPrune: (repositoryId: string) => void
+  onRemove: (repositoryId: string, row: WorktreeRow) => void
+} & Pick<ConsoleInjected, 'reveal' | 'notify'>) {
+  const [expanded, setExpanded] = useState(true)
+  const listId = useId()
+  return <section className={css.repository}>
+    <header className={css.repositoryHeader}>
+      <button type="button" className={css.repositoryButton} aria-expanded={expanded} aria-controls={listId} onClick={() => { setExpanded(value => !value) }}>
+        <IconChevronRightOutlineRegular size={13} className={css.expandGlyph} />
+        <IconFolderOpenOutlineRegular size={15} />
+        <span className={css.repositoryName}>{repository.title}</span>
+        <span className={css.repositoryCount}>{t('worktreeCount', { count: repository.worktrees.length })}</span>
+      </button>
+      <Button size="sm" variant="outline" disabled={busy} title={t('pruneHint')} onClick={() => { onPrune(repository.id) }}>{t('prune')}</Button>
+    </header>
+    <div id={listId} className={css.worktreePane}>
+      {expanded && (repository.worktrees.length === 0
+        ? <p className={css.empty}>{t('worktreesEmpty')}</p>
+        : <table className={css.table}>
+          <thead><tr>
+            <th>{t('branchDirectory')}</th>
+            <th className={css.changesCell}>{t('changes')}</th>
+            <th className={css.sourceCell}>{t('source')}</th>
+            <th className={css.actionsCell}>{t('actions')}</th>
+          </tr></thead>
+          <tbody>{repository.worktrees.map(row => <WorktreeTableRow
+            key={row.path} row={row} busy={busy} t={t} reveal={reveal} notify={notify}
+            onRemove={() => { onRemove(repository.id, row) }}
+          />)}</tbody>
+        </table>)}
+    </div>
+  </section>
 }
 
 function Console(props: ConsoleProps) {
   const { t } = props
   const [repositories, setRepositories] = useState<readonly RepositoryRows[] | undefined>(undefined)
-  const [selectedId, setSelectedId] = useState<string | undefined>(undefined)
   const [pending, setPending] = useState<PendingRemoval | undefined>(undefined)
   // A destructive confirm is gated on its own acknowledgement, reset per target.
   const [acknowledged, setAcknowledged] = useState(false)
+  const [sessionsAcknowledged, setSessionsAcknowledged] = useState(false)
   const [failure, setFailure] = useState<unknown>(undefined)
-  const [notice, setNotice] = useState<string | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [refreshToken, setRefreshToken] = useState(0)
-  /** Path whose copy action just succeeded, for the card's own feedback. */
-  const [copied, setCopied] = useState<string | undefined>(undefined)
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Latest-ref so the load effect depends on the refresh token alone: the face
   // is rebuilt on each render, and depending on it directly would refetch in a
@@ -230,7 +260,6 @@ function Console(props: ConsoleProps) {
         const snapshot = await face.current.list(controller.signal)
         if (controller.signal.aborted) return
         setRepositories(snapshot.repositories)
-        setSelectedId(current => current ?? snapshot.repositories[0]?.id)
       } catch (error: unknown) {
         if (!controller.signal.aborted) setFailure(error)
       }
@@ -238,44 +267,20 @@ function Console(props: ConsoleProps) {
     return () => { controller.abort() }
   }, [refreshToken])
 
-  useEffect(() => () => {
-    if (copiedTimer.current !== null) clearTimeout(copiedTimer.current)
-  }, [])
-
   const refresh = useCallback(() => {
     setFailure(undefined)
-    setNotice(undefined)
     setRefreshToken(token => token + 1)
   }, [])
-
-  const copyPath = useCallback((path: string) => {
-    void writeClipboard(path).then((accepted) => {
-      if (!accepted) return
-      setCopied(path)
-      if (copiedTimer.current !== null) clearTimeout(copiedTimer.current)
-      copiedTimer.current = setTimeout(() => { setCopied(undefined) }, COPIED_MS)
-    })
-  }, [])
-
-  const reveal = props.reveal
-
-  const showInFileManager = useCallback((path: string) => {
-    if (reveal === undefined) return
-    setFailure(undefined)
-    void reveal(path).then((shown) => {
-      if (!shown) setNotice(t('revealFailed'))
-    })
-  }, [reveal, t])
 
   async function runPrune(repositoryId: string): Promise<void> {
     setBusy(true)
     setFailure(undefined)
     try {
       const outcome = await props.prune(repositoryId, new AbortController().signal)
-      setNotice(outcome.pruned.length === 0 ? t('pruneNone') : t('pruneDone', { count: outcome.pruned.length }))
+      props.notify(outcome.pruned.length === 0 ? t('pruneNone') : t('pruneDone', { count: outcome.pruned.length }))
       setRefreshToken(token => token + 1)
     } catch (error: unknown) {
-      setFailure(error)
+      props.notify(describeFailure(error, t('failed')), true)
     } finally {
       setBusy(false)
     }
@@ -285,12 +290,20 @@ function Console(props: ConsoleProps) {
     setBusy(true)
     setFailure(undefined)
     try {
-      await props.removeWorktree(target.repositoryId, target.path, force, new AbortController().signal)
+      await props.removeWorktree(target.repositoryId, target.path, force, target.sessionIds, new AbortController().signal)
       setPending(undefined)
-      setNotice(t('removeDone', { path: target.path }))
+      props.notify(t('removeDone', { path: target.path }))
       setRefreshToken(token => token + 1)
     } catch (error: unknown) {
-      setFailure(error)
+      const code = error !== null && typeof error === 'object' && 'code' in error ? error.code : undefined
+      props.notify(
+        code === 'worktree/sessions-unconfirmed' ? t('removeSessionsChanged')
+          : code === 'worktree/session-access-denied' ? t('removeSessionsDenied')
+            : code === 'worktree/session-archive-failed' ? t('removeSessionsFailed')
+              : code === 'worktree/removal-incomplete' ? t('removeIncomplete')
+                : describeFailure(error, t('failed')),
+        true,
+      )
       setPending(undefined)
     } finally {
       setBusy(false)
@@ -302,24 +315,24 @@ function Console(props: ConsoleProps) {
     // the step: the confirmation is what the user is agreeing to, and the Host
     // re-reads the working tree before acting, so a row that went dirty since
     // this page was read is refused rather than deleted unseen.
-    setNotice(undefined)
     setAcknowledged(false)
+    setSessionsAcknowledged(false)
     setPending({
       repositoryId,
       path: row.path,
       files: row.dirtyFiles,
       ignoredCount: row.ignoredFiles.length,
       stale: row.stale,
+      sessionIds: row.sessionIds,
     })
   }
 
-  const selected = repositories?.find(row => row.id === selectedId)
 
   // Losing a change is not the same as deleting a directory: the dialog only
   // asks for an acknowledgement when something is actually at risk.
   const atRisk = pending !== undefined && (pending.files.length > 0 || pending.ignoredCount > 0)
 
-  return <section className={css.section}>
+  return <section className={css.section} data-worktree-console>
     <header className={css.header}>
       <div>
         <h3 className={css.title}>
@@ -338,78 +351,23 @@ function Console(props: ConsoleProps) {
     </header>
 
     {failure !== undefined && <p role="status" className={css.notice}>{describeFailure(failure, t('failed'))}</p>}
-    {notice !== undefined && <p role="status" className={css.notice}>{notice}</p>}
-
-    {repositories === undefined && <p className={css.notice}>{t('loading')}</p>}
+    {repositories === undefined && failure === undefined && <div role="status" aria-label={t('loading')} className={css.loading}>
+      <StateDot state="ongoing" />
+    </div>}
 
     {repositories !== undefined && repositories.length === 0 && <p className={css.notice}>{t('repositoriesEmpty')}</p>}
 
-    {repositories !== undefined && repositories.length > 0 && <div className={css.panes}>
-      <div>
-        <p className={css.paneLabel}><span className={css.paneLabelText}>{t('repositories')}</span></p>
-        <ul className={css.repositoryList}>
-          {repositories.map(repository => <li key={repository.id}>
-            <button
-              type="button"
-              className={css.repositoryButton}
-              aria-current={repository.id === selectedId}
-              onClick={() => { setSelectedId(repository.id); setPending(undefined) }}
-            >
-              <span className={css.repositoryName}>{repository.title}</span>
-              <span className={css.repositoryCount}>{repository.worktrees.length}</span>
-            </button>
-          </li>)}
-        </ul>
-      </div>
-
-      <div className={css.worktreePane}>
-        {selected === undefined
-          ? <p className={css.notice}>{t('selectRepository')}</p>
-          : <>
-            <div className={css.paneLabel}>
-              <span className={css.paneLabelText}>{t('worktreesIn', { repository: selected.title })}</span>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy}
-                title={t('pruneHint')}
-                onClick={() => { void runPrune(selected.id) }}
-              >
-                {t('prune')}
-              </Button>
-            </div>
-            {selected.worktrees.length === 0
-              ? <p className={css.notice}>{t('worktreesEmpty')}</p>
-              : <table className={css.table}>
-                <thead>
-                  <tr>
-                    <th>{t('branch')}</th>
-                    <th className={css.changesCell}>{t('changes')}</th>
-                    <th className={css.sourceCell}>{t('source')}</th>
-                    <th className={css.actionsCell} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {selected.worktrees.map(row => <WorktreeTableRow
-                    key={row.path}
-                    row={row}
-                    busy={busy}
-                    copied={copied === row.path}
-                    t={t}
-                    reveal={reveal}
-                    onCopy={copyPath}
-                    onReveal={showInFileManager}
-                    onRemove={() => { requestRemoval(selected.id, row) }}
-                  />)}
-                </tbody>
-              </table>}
-          </>}
-      </div>
+    {repositories !== undefined && repositories.length > 0 && <div className={css.repositories}>
+      {repositories.map(repository => <RepositoryGroup
+        key={repository.id} repository={repository} busy={busy} t={t}
+        reveal={props.reveal} notify={props.notify}
+        onPrune={(id) => { void runPrune(id) }} onRemove={requestRemoval}
+      />)}
     </div>}
 
     {pending !== undefined && <Modal
       open
-      onClose={() => { setPending(undefined) }}
+      onClose={() => { if (!busy) setPending(undefined) }}
       title={t('removeConfirm')}
       closeLabel={t('removeCancel')}
       footer={(
@@ -419,7 +377,7 @@ function Console(props: ConsoleProps) {
           </Button>
           <Button
             variant="primary"
-            disabled={busy || (atRisk && !acknowledged)}
+            disabled={busy || (atRisk && !acknowledged) || (pending.sessionIds.length > 0 && !sessionsAcknowledged)}
             onClick={() => { void submitRemoval(pending, atRisk) }}
           >
             {t('removeConfirmAction')}
@@ -429,6 +387,18 @@ function Console(props: ConsoleProps) {
     >
       <p className={css.hint}>{pending.path} — {t('removeConfirmHint')}</p>
       {pending.stale && <p className={css.hint}>{t('staleCardHint')}</p>}
+      {pending.sessionIds.length > 0 && <>
+        <p className={css.hint}>{t('removeSessionsHint', { count: pending.sessionIds.length })}</p>
+        <label className={css.acknowledge}>
+          <input
+            type="checkbox"
+            checked={sessionsAcknowledged}
+            disabled={busy}
+            onChange={(event) => { setSessionsAcknowledged(event.currentTarget.checked) }}
+          />
+          <span>{t('removeSessionsAcknowledge')}</span>
+        </label>
+      </>}
       {pending.files.length > 0 && <>
         <p className={css.hint}>{t('removeLostFiles')}</p>
         <ul className={css.files}>

@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/experimental/worktree-console/README.md
 /:
-  en: bbb13b921adac1b7
-  zh: c9ece196d59f0bb2
+  en: e0d165e36731a152
+  zh: cf4edcf1cd12ec88
 /deepseek-ai-dsh-experimental-worktree-console:
   en: 8b54b9afe0f710dc
   zh: c10de9bd05936365
 /deepseek-ai-dsh-experimental-worktree-console/summary:
-  en: e6bc923af8941142
-  zh: e5711ef4434440c4
+  en: ebfda7de28f9a115
+  zh: b9f72c74f7f8fde9
 /deepseek-ai-dsh-experimental-worktree-console/table-of-contents:
   en: 76368b6b1da79c80
   zh: 434cf3c1f5db33cd
 /deepseek-ai-dsh-experimental-worktree-console/use-this-package:
-  en: 8462bab8f1a67a04
-  zh: 7cf6797297a2da48
+  en: d2fab0b1ce66e204
+  zh: de0384f3af35ddd3
 /deepseek-ai-dsh-experimental-worktree-console/understand-the-implementation:
-  en: 00643d8efa248d32
-  zh: ddd46a30ff4b1ca7
+  en: b90897841f162239
+  zh: 870a3e4f90a2998c
 /deepseek-ai-dsh-experimental-worktree-console/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -36,8 +36,8 @@
   en: f7ecee5b92e83174
   zh: 8b1347206e7a0386
 /deepseek-ai-dsh-experimental-worktree-console/known-limitations-and-deferred-work:
-  en: 32a488ce3392b78b
-  zh: 7a4690fcae4802e5
+  en: 59c7bfcf543656fa
+  zh: 6a3dac6438cfe045
 /deepseek-ai-dsh-experimental-worktree-console/known-limitations-and-deferred-work/dev-note:
   en: 3a14ec884a1f6ee1
   zh: 0f14e359ec8ce9ee

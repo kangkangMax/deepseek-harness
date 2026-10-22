@@ -1,34 +1,78 @@
-/* The dock is a centered flex row shared with the context meter, so this strip
-   is an inline item there rather than a full-width row of its own: it may only
-   take the space its single value needs, and must shrink before pushing the
-   meter off the row. */
 .root {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  min-width: 0;
-  max-width: 100%;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 11.5px;
-  line-height: 16px;
+  min-width: 28px;
+  max-width: min(280px, 30cqi);
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  text-align: left;
+  cursor: default;
 }
 
 .icon {
   flex: none;
-  opacity: 0.8;
 }
 
-/* A branch name is a machine name, so it is set in the mono face and clipped
-   rather than wrapped: a wrapped name would change the composer's height every
-   time a long branch is checked out. The cap leaves room for the repository
-   name that used to share this row. */
 .branch {
   min-width: 0;
   overflow: hidden;
-  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 11px;
-  color: var(--dsw-alias-label-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 320px;
+}
+
+@container (max-width: 160px) {
+  .root {
+    gap: 0;
+  }
+
+  .branch {
+    display: none;
+  }
+}
+
+.root:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .root:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.detailLabel {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.path {
+  margin: 0;
+  font-family: var(--dsw-font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.branchName {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 500;
 }

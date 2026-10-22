@@ -1,5 +1,6 @@
 .wrap {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   min-width: 0;
@@ -20,9 +21,7 @@
 /* The tool row is short and the Host's reason is a whole command line, so the
    text ellipsizes and the element carries the full sentence for a hover. */
 .failure {
-  overflow: hidden;
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }

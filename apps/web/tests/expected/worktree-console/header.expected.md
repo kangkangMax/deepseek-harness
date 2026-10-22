@@ -1,0 +1,4 @@
+- navigation "Session hierarchy": Worktree header fixture
+- text: Standard mode worktree-{{uuid}}
+- button "More actions"
+- button "Open right sidebar"

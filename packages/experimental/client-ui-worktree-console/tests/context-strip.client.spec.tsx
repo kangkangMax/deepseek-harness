@@ -53,6 +53,8 @@ function renderStrip(
     branchReads += 1
     return branchReads > 1 && options.thenChoices !== undefined ? options.thenChoices : options.choices ?? main()
   })
+  const reveal = vi.fn(async () => true)
+  const notify = vi.fn()
   const props = (over: { running?: boolean } = {}) => ({
     sessionId: 'session-1',
     useSession: (selector: (snapshot: { running: boolean }) => unknown) => selector({
@@ -61,11 +63,15 @@ function renderStrip(
     t: literalT(),
     state,
     branches,
-  } as unknown as WorktreeContextProps)
+    reveal,
+    notify,
+  } as WorktreeContextProps)
   const view = render(<WorktreeContext {...props()} />)
   return {
     state,
     branches,
+    reveal,
+    notify,
     container: view.container,
     rerenderWith: (over: { running?: boolean }) => {
       view.rerender(<WorktreeContext {...props(over)} />)
@@ -77,7 +83,7 @@ function renderStrip(
 function hover(container: HTMLElement) {
   const anchor = container.firstElementChild
   if (anchor === null) throw new Error('the strip rendered no anchor')
-  fireEvent.mouseOver(anchor)
+  fireEvent.pointerEnter(anchor)
   return anchor
 }
 
@@ -97,12 +103,40 @@ describe('composer context strip', () => {
   // Hovering the branch is the one affordance this line has: it names the
   // directory, which is the same answer as "which repository" plus where it is.
   it('names the checkout directory when the branch is hovered', async () => {
-    const { container } = renderStrip()
+    const { container, reveal } = renderStrip()
     await screen.findByText('main')
 
     hover(container)
 
     expect(await screen.findByText('/repos/deepseek-harness')).toBeTruthy()
+    expect(screen.getByRole('button', { name: en.copyPath })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: en.reveal }))
+    await waitFor(() => { expect(reveal).toHaveBeenCalledWith('/repos/deepseek-harness') })
+  })
+
+  it('shows one hover card and never opens a dialog on click', async () => {
+    renderStrip()
+    const branch = await screen.findByText('main')
+    fireEvent.click(branch)
+    expect(screen.queryByRole('region', { name: en.directory })).toBeNull()
+    fireEvent.pointerEnter(branch.closest('[data-worktree-context]')!.parentElement!)
+    await screen.findByRole('region', { name: en.directory })
+    expect(screen.getAllByRole('region', { name: en.directory })).toHaveLength(1)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('button', { name: en.copyPath })).toBeTruthy()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => { expect(screen.queryByRole('region', { name: en.directory })).toBeNull() })
+  })
+
+  it('does not open directory details on touch hover or click', async () => {
+    renderStrip()
+    const branch = await screen.findByText('main')
+    const touch = new Event('pointerover', { bubbles: true })
+    Object.defineProperty(touch, 'pointerType', { value: 'touch' })
+    fireEvent(branch, touch)
+    fireEvent.click(branch)
+    expect(screen.queryByRole('region', { name: en.directory })).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   // The stripped root is what the Host resolves from the Session's directory,
@@ -189,18 +223,23 @@ describe('composer context strip', () => {
       t: literalT(),
       state: () => never,
       branches: () => never,
-    } as unknown as WorktreeContextProps
+    } as WorktreeContextProps
     const { container } = render(<WorktreeContext {...props} />)
 
     expect(container.textContent).toBe('')
   })
 
-  // The strip is a reading with no affordance, so a failed read drops the line
-  // instead of printing a fault the user cannot do anything about.
-  it('stays out of the row when the read fails', async () => {
-    const { state, container } = renderStrip({ rejects: new Error('unreachable') })
+  it('reports when the current checkout cannot be read', async () => {
+    renderStrip({ rejects: new Error('unreachable') })
+    expect((await screen.findByRole('status')).textContent).toBe(en.failed)
+  })
 
-    await waitFor(() => { expect(state).toHaveBeenCalled() })
-    await waitFor(() => { expect(container.textContent).toBe('') })
+  it('reports detached HEAD instead of an earlier worktree branch', async () => {
+    renderStrip({
+      state: idle({ worktree: { path: '/repos/dsh', branch: 'old-branch', baseCommit: 'a', repositoryRoot: '/repos/dsh' } }),
+      choices: main({ branches: [{ name: 'old-branch', kind: 'local', current: false }] }),
+    })
+    expect(await screen.findByText(en.detached)).toBeTruthy()
+    expect(screen.queryByText('old-branch')).toBeNull()
   })
 })

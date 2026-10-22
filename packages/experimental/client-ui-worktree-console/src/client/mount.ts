@@ -1,5 +1,6 @@
 /** Source-safe lifecycle for the worktree console Remote and its browser UI. */
 import type { Context } from '@deepseek-ai/cordis'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-experimental-worktree-console/remote'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -11,6 +12,7 @@ import { createConsoleFace, createSwitchFace } from './face.ts'
 import { WorktreeConsolePage } from './Console.tsx'
 import { WorktreeContext } from './ContextStrip.tsx'
 import { WorktreeSwitch } from './Switch.tsx'
+import { WorktreeNoticeOverlay, type NoticeInjected, type WorktreeNotice } from './Notice.tsx'
 import { en, NS, zh } from './locales.ts'
 
 export const inject = ['remote', 'slots', 'locale']
@@ -21,7 +23,15 @@ function registerUi(ctx: Context): void {
   // The management page owns one Settings navigation row, which puts it where
   // a user opens this panel to configure things — a section at the bottom of a
   // bundle's own Plugins page was reachable but not findable.
-  const console = createConsoleFace(ctx)
+  const notice = createSnapshotStore<WorktreeNotice | null>(null)
+  let sequence = 0
+  const console = createConsoleFace(ctx, (text, failed = false) => {
+    notice.set({ text, failed, sequence: ++sequence })
+  })
+  const feedback: NoticeInjected = { hooks: { notice }, dismissNotice: () => { notice.set(null) } }
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay', id: 'worktree-console.notice', inject: () => feedback,
+  }, WorktreeNoticeOverlay))
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'worktree-console',
@@ -37,11 +47,9 @@ function registerUi(ctx: Context): void {
   ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
     name: 'conversation.input.left', id: 'worktree', order: 100, locale: NS, inject: () => face,
   }, WorktreeSwitch))
-  // `conversation.composer.dock` is the row below the composer card, beside the
-  // context meter — the one place a sentence about *where* the next step runs
-  // sits next to the input it applies to, without a second new slot.
-  ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
-    name: 'conversation.composer.dock', id: 'worktree-context', order: 100, locale: NS, inject: () => face,
+  ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
+    name: 'conversation.session.header.actions', id: 'worktree-context', order: -9, locale: NS,
+    inject: () => ({ state: face.state, branches: face.branches, reveal: console.reveal, notify: console.notify }),
   }, WorktreeContext))
 }
 

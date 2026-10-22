@@ -66,6 +66,7 @@ async function runtime(): Promise<Context> {
   ctx.slots.register({ name: 'root', children: {
     'settings.section': { kind: 'list', scope: 'root' },
     'conversation.input.left': { kind: 'list', scope: 'session' },
+    'conversation.session.header.actions': { kind: 'list', scope: 'session' },
   } } as never, () => null)
   return ctx
 }
@@ -78,6 +79,8 @@ it('activates against the real Remote gateway', async () => {
   // the gateway's message instead of surfacing as a bare `failed` label.
   await fiber
   expect(ctx.get('remote.worktrees')).toBeDefined()
+  expect(ctx.slots.entries('conversation.session.header.actions').map(entry => entry.options.id)).toEqual(['worktree-context'])
+  expect(ctx.slots.entries('conversation.session.header.actions')[0]?.options.order).toBe(-9)
 
   await ctx.fiber.dispose()
 })
@@ -88,7 +91,7 @@ it('serves the removal under the name the Host publishes', async () => {
 
   // The wire name is `removeWorktree`, not `remove`: a namespace service owns a
   // `remove` of its own, and `$mount` refuses a method that lands on it.
-  const outcome = await ctx.remote.worktrees.removeWorktree('repo', '/repos/dsh/.agents/worktrees/brave-otter', true, new AbortController().signal)
+  const outcome = await ctx.remote.worktrees.removeWorktree('repo', '/repos/dsh/.agents/worktrees/brave-otter', true, [], new AbortController().signal)
 
   expect(outcome).toEqual({ ok: true, value: { removed: '/repos/dsh/.agents/worktrees/brave-otter' } })
   expect(answered).toEqual(['worktrees/removeWorktree'])

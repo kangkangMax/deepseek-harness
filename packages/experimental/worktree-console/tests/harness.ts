@@ -15,6 +15,8 @@ import { Context } from '@deepseek-ai/cordis'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import type { WorktreeService } from '@deepseek-ai/dsh-experimental-worktree'
+import { Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import { SessionQueryError, type SessionObservation, type SessionQueryEngine } from '@deepseek-ai/dsh-session-query'
 import WorktreeConsole from '../src/index.ts'
 
 const execute = promisify(execFile)
@@ -101,6 +103,10 @@ export interface Harness {
   readonly sandbox: RecordingSandbox
   readonly access: RecordingAccess
   readonly root: string
+  readonly archived: string[]
+  readonly query: Pick<SessionQueryEngine, 'listSessions' | 'observeSession'>
+  readonly removeQuery: () => void
+  readonly removeWorkingDirectory: () => void
 }
 
 /**
@@ -111,6 +117,10 @@ export interface Harness {
  * works in.
  */
 export interface SessionFixture {
+  readonly entries?: readonly { id: string; directory: string; persisted?: boolean }[]
+  readonly archive?: (id: string) => Promise<void>
+  /** Whether a turn has already started. */
+  readonly started?: boolean
   /**
    * Ids the Session store holds. Omitted means every id resolves, which is what
    * the arm path relied on before a Session service was read at all.
@@ -136,6 +146,7 @@ export async function harness(
   sessions: SessionFixture = {},
 ): Promise<Harness> {
   const ctx = new Context()
+  const archived: string[] = []
   const sandbox: RecordingSandbox = {
     policies: [],
     confine(argv, policy) {
@@ -167,17 +178,51 @@ export async function harness(
     list: () => repositories.map(path => ({
       id: path, path, title: basename(path), createdAt: '', updatedAt: '', sessionIds: [],
     })),
+    get archivedSessionIds() { return archived },
+    archiveSession: async (id: string) => {
+      await sessions.archive?.(id)
+      if (!archived.includes(id)) archived.push(id)
+    },
   } as never)
+  const query: Harness['query'] = {
+    listSessions: () => Promise.resolve((sessions.entries ?? []).map(entry => ({
+      header: { ...Session.create(SessionId(entry.id)).header, cwd: root },
+      live: entry.persisted !== true,
+      persisted: entry.persisted === true,
+    }))),
+    observeSession: (id: string) => {
+      const entry: { id: string; directory: string; persisted?: boolean } | undefined = sessions.entries === undefined
+        ? sessions.known === undefined || sessions.known.includes(id)
+          ? { id, directory: sessions.directory ?? root }
+          : undefined
+        : sessions.entries.find(candidate => candidate.id === id)
+      if (entry === undefined) throw new SessionQueryError(`unknown fixture session ${id}`, 'SESSION_QUERY_SESSION_NOT_FOUND')
+      const observation: SessionObservation = {
+        header: { ...Session.create(SessionId(id)).header, cwd: root },
+        source: entry.persisted === true ? 'prepared' : 'live',
+        inheritedEventCount: SessionLogOffset(0),
+        events: [], cursor: -1,
+        projections: { asOfSeq: -1, values: { workingDirectory: entry.directory } },
+        retain: () => observation,
+        [Symbol.dispose]() {},
+      }
+      return Promise.resolve(observation)
+    },
+  }
+  const removeQuery = ctx.provide('sessionQuery', query as SessionQueryEngine)
   ctx.provide('sessions', {
     get: (id: string) => sessions.known === undefined || sessions.known.includes(id) ? { id } : undefined,
   } as never)
+  ctx.provide('sessionProjections', {
+    stateOf: () => ({ openTurnStartSeq: null, lastTurn: sessions.started === true ? 1 : 0 }),
+  } as never)
   // The directory read is the one call the branch picker makes, so the seam is
   // the answer it returns rather than the projection machinery behind it.
-  ctx.provide('workingDirectory', {
+  const removeWorkingDirectory = ctx.provide('workingDirectory', {
     get: () => sessions.directory ?? root,
   } as never)
   // Left absent when the test needs the "official plugin not loaded" path.
   if (worktrees !== undefined) ctx.provide('worktrees', worktrees as never)
   await ctx.plugin(WorktreeConsole, { gitCommand: 'git' })
-  return { ctx, sandbox, access, root }
+  return { ctx, sandbox, access, root, archived, query, removeQuery, removeWorkingDirectory }
 }

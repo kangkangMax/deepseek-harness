@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ConsoleSnapshot } from '@deepseek-ai/dsh-experimental-worktree-console/types'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import { WorktreeConsolePage, type ConsoleProps } from '../src/client/Console.tsx'
 import { en } from '../src/client/locales.ts'
 
@@ -37,15 +38,22 @@ function row(dirtyFiles: readonly string[], over: Partial<ConsoleSnapshot['repos
     outsideRepository: false,
     locked: false,
     origin: 'official' as const,
+    sessionIds: [],
     ...over,
   }
 }
 
-function renderSection(options: { worktrees?: readonly ReturnType<typeof row>[] } = {}) {
-  const list = vi.fn(async () => snapshot(options.worktrees ?? [row([])]))
+function renderSection(options: {
+  worktrees?: readonly ReturnType<typeof row>[]
+  repositories?: ConsoleSnapshot['repositories']
+} = {}) {
+  const list = vi.fn(async () => options.repositories === undefined
+    ? snapshot(options.worktrees ?? [row([])])
+    : { repositories: options.repositories })
   const prune = vi.fn(async () => ({ pruned: [] }))
   const removeWorktree = vi.fn(async () => ({ removed: WORKTREE }))
   const reveal = vi.fn(async () => true)
+  const notify = vi.fn()
   const props = {
     close: () => {},
     t: literalT(),
@@ -53,12 +61,81 @@ function renderSection(options: { worktrees?: readonly ReturnType<typeof row>[] 
     prune,
     removeWorktree,
     reveal,
+    notify,
   } as ConsoleProps
   render(<WorktreeConsolePage {...props} />)
-  return { list, prune, removeWorktree, reveal }
+  return { list, prune, removeWorktree, reveal, notify }
 }
 
 describe('worktree management page', () => {
+  it('requires a separate acknowledgement to archive associated sessions', async () => {
+    const sessionIds = [SessionId('associated')]
+    const { removeWorktree } = renderSection({ worktrees: [row([], { sessionIds })] })
+    fireEvent.click(await screen.findByText(en.remove))
+    expect(await screen.findByText(en.removeSessionsHint.replace('{count}', '1'))).toBeTruthy()
+    const confirm = screen.getByRole('button', { name: en.removeConfirmAction }) as HTMLButtonElement
+    expect(confirm.disabled).toBe(true)
+    expect(removeWorktree).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('checkbox', { name: en.removeSessionsAcknowledge }))
+    expect(confirm.disabled).toBe(false)
+    fireEvent.click(confirm)
+    await waitFor(() => {
+      expect(removeWorktree).toHaveBeenCalledWith('wt', WORKTREE, false, sessionIds, expect.anything())
+    })
+  })
+
+  it('resets session acknowledgement after cancelling a removal', async () => {
+    const { removeWorktree } = renderSection({ worktrees: [row([], { sessionIds: [SessionId('associated')] })] })
+    fireEvent.click(await screen.findByText(en.remove))
+    fireEvent.click(await screen.findByRole('checkbox', { name: en.removeSessionsAcknowledge }))
+    fireEvent.click(screen.getByText(en.removeCancel))
+    fireEvent.click(screen.getByText(en.remove))
+    expect((await screen.findByRole<HTMLButtonElement>('button', { name: en.removeConfirmAction })).disabled).toBe(true)
+    expect(removeWorktree).not.toHaveBeenCalled()
+  })
+
+  it('requires both file-loss and session-archive acknowledgements', async () => {
+    const { removeWorktree } = renderSection({ worktrees: [row(['fresh.txt'], { sessionIds: [SessionId('associated')] })] })
+    fireEvent.click(await screen.findByText(en.remove))
+    const confirm = await screen.findByRole('button', { name: en.removeConfirmAction }) as HTMLButtonElement
+    fireEvent.click(screen.getByRole('checkbox', { name: en.removeSessionsAcknowledge }))
+    expect(confirm.disabled).toBe(true)
+    fireEvent.click(screen.getByRole('checkbox', { name: en.removeAcknowledge }))
+    expect(confirm.disabled).toBe(false)
+    fireEvent.click(confirm)
+    await waitFor(() => {
+      expect(removeWorktree).toHaveBeenCalledWith('wt', WORKTREE, true, ['associated'], expect.anything())
+    })
+  })
+
+  it.each([
+    ['worktree/sessions-unconfirmed', en.removeSessionsChanged],
+    ['worktree/session-access-denied', en.removeSessionsDenied],
+    ['worktree/session-archive-failed', en.removeSessionsFailed],
+    ['worktree/removal-incomplete', en.removeIncomplete],
+  ])('reports %s with localized recovery guidance', async (code, message) => {
+    const { removeWorktree, notify } = renderSection()
+    removeWorktree.mockRejectedValueOnce({ code })
+    fireEvent.click(await screen.findByText(en.remove))
+    fireEvent.click(await screen.findByText(en.removeConfirmAction))
+    await waitFor(() => { expect(notify).toHaveBeenCalledWith(message, true) })
+    expect(screen.getByText('brave-otter')).toBeTruthy()
+  })
+
+  it('opens complete details and actions by activating the branch', async () => {
+    renderSection()
+    fireEvent.click(await screen.findByRole('button', { name: 'brave-otter' }))
+    const details = await screen.findByRole('dialog')
+    expect(within(details).getByText(WORKTREE)).toBeTruthy()
+    expect(screen.getByText(en.copyPath)).toBeTruthy()
+  })
+
+  it('shows ignored content instead of labelling it clean', async () => {
+    renderSection({ worktrees: [row([], { ignoredFiles: ['.env'] })] })
+    expect(await screen.findByText(en.ignoredCount.replace('{count}', '1'))).toBeTruthy()
+    expect(screen.queryByText(en.clean)).toBeNull()
+  })
+
   it('reads its repositories from the Host on mount', async () => {
     const { list } = renderSection()
 
@@ -66,18 +143,71 @@ describe('worktree management page', () => {
     expect(list).toHaveBeenCalled()
   })
 
-  // The branch is the only column that identifies a row, so it is the column
-  // that stays readable; the directory and the commit live in its hover card.
-  it('shows the full directory, the commit, and both card actions on hover', async () => {
+  it('opens compact details by clicking a non-action cell without repeating the branch', async () => {
     const { reveal } = renderSection()
-
-    fireEvent.pointerOver(await screen.findByText('brave-otter'))
-
-    expect(await screen.findByText(WORKTREE)).toBeTruthy()
-    expect(screen.getByText('abcdef01')).toBeTruthy()
-    expect(screen.getByText(en.copyPath)).toBeTruthy()
-    fireEvent.click(screen.getByText(en.reveal))
+    fireEvent.click(await screen.findByText(en.clean))
+    const details = await screen.findByRole('dialog', { name: 'brave-otter' })
+    expect(within(details).getAllByText('brave-otter')).toHaveLength(1)
+    expect(within(details).getByText(WORKTREE)).toBeTruthy()
+    expect(within(details).getByText('abcdef01')).toBeTruthy()
+    expect(within(details).getByText(en.copyPath)).toBeTruthy()
+    fireEvent.click(within(details).getByText(en.reveal))
     await waitFor(() => { expect(reveal).toHaveBeenCalledWith(WORKTREE) })
+  })
+
+  it('opens details from row keyboard activation but not from a removal button', async () => {
+    renderSection()
+    const branch = await screen.findByText('brave-otter')
+    const tableRow = branch.closest('tr')
+    if (tableRow === null) throw new Error('worktree row missing')
+    fireEvent.keyDown(tableRow, { key: 'Enter' })
+    expect(await screen.findByRole('dialog', { name: 'brave-otter' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: en.close }))
+    fireEvent.click(screen.getByText(en.remove))
+    expect(await screen.findByRole('dialog', { name: en.removeConfirm })).toBeTruthy()
+    expect(screen.queryByRole('dialog', { name: 'brave-otter' })).toBeNull()
+  })
+
+  it('dismisses row details from the mask without reopening them', async () => {
+    renderSection()
+    fireEvent.click(await screen.findByText(en.clean))
+    const dialog = await screen.findByRole('dialog', { name: 'brave-otter' })
+    const mask = dialog.previousElementSibling
+    if (mask === null) throw new Error('dialog mask missing')
+    fireEvent.click(mask)
+    await waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull() })
+  })
+
+  it('opens row details inside the Settings dialog', async () => {
+    render(<div role="dialog" aria-label="Settings">
+      <WorktreeConsolePage {...{
+        close: () => {}, t: literalT(), list: async () => snapshot([row([])]),
+        prune: async () => ({ pruned: [] }), removeWorktree: async () => ({ removed: WORKTREE }),
+        notify: () => {},
+      } as ConsoleProps} />
+    </div>)
+    fireEvent.click(await screen.findByText(en.clean))
+    expect(await screen.findByRole('dialog', { name: 'brave-otter' })).toBeTruthy()
+  })
+
+  it('folds workspace lists independently while cleanup leaves them folded', async () => {
+    const { prune } = renderSection({ repositories: [
+      ...snapshot([row([])]).repositories,
+      { id: 'other', title: 'other', path: '/repos/other', worktrees: [row([], { path: '/repos/other', branch: 'other-branch' })] },
+    ] })
+    await screen.findByText('brave-otter')
+    expect(screen.getByText('other-branch')).toBeTruthy()
+    const workspace = screen.getByRole('button', { name: /dsh/ })
+    expect(workspace.getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(workspace)
+    expect(workspace.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByText('brave-otter')).toBeNull()
+    expect(screen.getByText('other-branch')).toBeTruthy()
+    fireEvent.click(screen.getAllByText(en.prune)[0]!)
+    await waitFor(() => { expect(prune).toHaveBeenCalledWith('wt', expect.anything()) })
+    expect(workspace.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(workspace)
+    expect(await screen.findByText('brave-otter')).toBeTruthy()
   })
 
   it('names the convention that created the checkout', async () => {
@@ -136,7 +266,7 @@ describe('worktree management page', () => {
     fireEvent.click(confirm)
 
     await waitFor(() => {
-      expect(removeWorktree).toHaveBeenCalledWith('wt', WORKTREE, true, expect.anything())
+      expect(removeWorktree).toHaveBeenCalledWith('wt', WORKTREE, true, [], expect.anything())
     })
   })
 
@@ -163,7 +293,7 @@ describe('worktree management page', () => {
 
     fireEvent.click(screen.getByText(en.removeConfirmAction))
     await waitFor(() => {
-      expect(removeWorktree).toHaveBeenCalledWith('wt', WORKTREE, false, expect.anything())
+      expect(removeWorktree).toHaveBeenCalledWith('wt', WORKTREE, false, [], expect.anything())
     })
   })
 
@@ -188,7 +318,7 @@ describe('worktree management page', () => {
     fireEvent.click(await screen.findByText(en.removeConfirmAction))
 
     await waitFor(() => {
-      expect(removeWorktree).toHaveBeenCalledWith('wt', WORKTREE, false, expect.anything())
+      expect(removeWorktree).toHaveBeenCalledWith('wt', WORKTREE, false, [], expect.anything())
     })
   })
 
@@ -202,12 +332,12 @@ describe('worktree management page', () => {
   })
 
   it('clears stale registrations for the selected repository', async () => {
-    const { prune } = renderSection()
+    const { prune, notify } = renderSection()
 
     fireEvent.click(await screen.findByText(en.prune))
 
     await waitFor(() => { expect(prune).toHaveBeenCalledWith('wt', expect.anything()) })
-    expect(await screen.findByText(en.pruneNone)).toBeTruthy()
+    await waitFor(() => { expect(notify).toHaveBeenCalledWith(en.pruneNone) })
   })
 
   // The Settings page draws a section's own chrome (title, icon, crumb — see
@@ -250,7 +380,7 @@ describe('worktree management page', () => {
   it('keeps the repository name in the heading row beside a titled cleanup', async () => {
     renderSection()
 
-    const heading = await screen.findByText(en.worktreesIn.replace('{repository}', 'dsh'))
+    const heading = await screen.findByRole('button', { name: /dsh/ })
     const cleanup = screen.getByText(en.prune).closest('button') as HTMLButtonElement
     expect(heading).toBeTruthy()
     expect(cleanup.getAttribute('title')).toBe(en.pruneHint)

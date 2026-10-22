@@ -25,8 +25,10 @@
   cursor: pointer;
 }
 
-.trigger:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+@media (hover: hover) {
+  .trigger:hover:not(:disabled) {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
 }
 
 .trigger:disabled {
@@ -56,8 +58,8 @@
   box-sizing: border-box;
   width: max-content;
   min-width: 220px;
-  max-width: 340px;
-  max-height: min(320px, calc(100vh - 24px));
+  max-width: min(340px, calc(100vw - 24px));
+  max-height: min(320px, calc(100dvh - var(--dsh-frame-top-clearance, 0px) - 44px));
   padding: 4px;
   overflow: hidden;
   border: 0;
@@ -120,6 +122,7 @@
 .list {
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 /* ── rows ───────────────────────────────────────────────────────────────── */
@@ -143,10 +146,15 @@
   cursor: pointer;
 }
 
-.row:hover,
 .row:focus-visible,
 .row[data-active] {
   background: var(--dsw-alias-interactive-bg-hover);
+}
+
+@media (hover: hover) {
+  .row:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
 }
 
 .glyph {

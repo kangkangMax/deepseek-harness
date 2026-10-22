@@ -43,6 +43,22 @@ async function firePreStep(context: Harness, subject: Agent): Promise<{ kind: st
 }
 
 describe('entering a worktree on send', () => {
+  it('refuses to arm a Session whose first turn has already started', async () => {
+    const create = vi.fn(async () => entered())
+    live = await harness(tmpdir(), [], { create }, { started: true })
+    const failure = await live.ctx.worktreeConsole.arm(SESSION, {}, signal()).catch((error: unknown) => error)
+    expect(remoteErrorOf(failure)).toMatchObject({ code: 'worktree/session-started' })
+    expect((await live.ctx.worktreeConsole.state(SESSION, signal())).armed).toBe(false)
+    expect(create).not.toHaveBeenCalled()
+  })
+
+  it('reads back the accepted intent, including its base revision', async () => {
+    live = await harness(tmpdir(), [], { create: async () => entered() })
+    await live.ctx.worktreeConsole.arm(SESSION, { from: 'refs/heads/main' }, signal())
+    expect(await live.ctx.worktreeConsole.state(SESSION, signal())).toMatchObject({
+      armed: true, request: { from: 'refs/heads/main' },
+    })
+  })
   it('refuses to arm when the official worktree plugin is not loaded', async () => {
     live = await harness(tmpdir())
 

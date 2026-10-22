@@ -1,7 +1,9 @@
 import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import { SessionQueryError, type SessionObservation, type SessionQueryEngine } from '@deepseek-ai/dsh-session-query'
 import { remoteErrorOf, remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import { git, harness, repository, type Harness } from './harness.ts'
 
@@ -29,6 +31,234 @@ async function registered(root: string): Promise<string> {
 }
 
 describe('worktree console Remote', () => {
+  it('requires confirmation before archiving live and persisted sessions in a removed worktree', async () => {
+    fixture = await repository()
+    const checkout = await worktreeAt(fixture, 'associated')
+    live = await harness(fixture, [fixture], undefined, { entries: [
+      { id: 'live', directory: checkout },
+      { id: 'cold', directory: join(checkout, 'src'), persisted: true },
+      { id: 'unrelated', directory: `${checkout}-other` },
+      { id: 'main', directory: fixture },
+    ] })
+
+    const row = (await live.ctx.worktreeConsole.list(signal())).repositories[0]?.worktrees.find(row => row.path === checkout)
+    expect(row?.sessionIds).toEqual(['live', 'cold'])
+    await expect(live.ctx.worktreeConsole.removeWorktree(fixture, checkout, true, [], signal()))
+      .rejects.toMatchObject({ code: 'worktree/sessions-unconfirmed' })
+    expect(await registered(fixture)).toContain(checkout)
+    expect(live.archived).toEqual([])
+
+    await live.ctx.worktreeConsole.removeWorktree(fixture, checkout, false, ['live', 'cold'], signal())
+    expect(await registered(fixture)).not.toContain(checkout)
+    expect(live.archived).toEqual(['live', 'cold'])
+  })
+
+  it.each([new Error('session is active'), 'session is active'])('leaves the checkout registered when archiving fails: %s', async (failure) => {
+    fixture = await repository()
+    const checkout = await worktreeAt(fixture, 'active-session')
+    live = await harness(fixture, [fixture], undefined, {
+      entries: [{ id: 'active', directory: checkout }],
+      archive: vi.fn<(id: string) => Promise<void>>().mockRejectedValue(failure),
+    })
+    await expect(live.ctx.worktreeConsole.removeWorktree(fixture, checkout, true, ['active'], signal()))
+      .rejects.toMatchObject({ code: 'worktree/session-archive-failed' })
+    expect(await registered(fixture)).toContain(checkout)
+    expect(live.archived).toEqual([])
+  })
+
+  it('refuses removal when Session history is unavailable', async () => {
+    fixture = await repository()
+    const checkout = await worktreeAt(fixture, 'history-unavailable')
+    live = await harness(fixture, [fixture])
+    live.removeQuery()
+    await expect(live.ctx.worktreeConsole.removeWorktree(fixture, checkout, false, [], signal()))
+      .rejects.toMatchObject({ code: 'worktree/unavailable', details: { reason: 'no-session-query' } })
+    expect(await registered(fixture)).toContain(checkout)
+  })
+
+  it('refuses removal when working-directory projections are unavailable and releases the observation', async () => {
+    fixture = await repository()
+    const checkout = await worktreeAt(fixture, 'projection-unavailable')
+    live = await harness(fixture, [fixture], undefined, { entries: [{ id: 'associated', directory: checkout }] })
+    const read = live.query.observeSession
+    const dispose = vi.fn()
+    live.query.observeSession = async (...args) => {
+      const { projections: _projections, ...observation } = await read(...args)
+      return { ...observation, [Symbol.dispose]: dispose }
+    }
+    await expect(live.ctx.worktreeConsole.removeWorktree(fixture, checkout, false, ['associated'], signal()))
+      .rejects.toMatchObject({ code: 'worktree/unavailable', details: { reason: 'no-session-projections' } })
+    expect(dispose).toHaveBeenCalledOnce()
+    expect(await registered(fixture)).toContain(checkout)
+  })
+
+  it('uses the header directory when a Session has no directory-change projection', async () => {
+    fixture = await repository()
+    const checkout = await worktreeAt(fixture, 'header-directory')
+    live = await harness(fixture, [fixture], undefined, { entries: [{ id: 'associated', directory: fixture }] })
+    const read = live.query.observeSession
+    live.query.observeSession = async (...args) => {
+      const observation = await read(...args)
+      return { ...observation, header: { ...observation.header, cwd: checkout }, projections: { asOfSeq: -1, values: {} } }
+    }
+    await expect(live.ctx.worktreeConsole.removeWorktree(fixture, checkout, false, [], signal()))
+      .rejects.toMatchObject({ code: 'worktree/sessions-unconfirmed' })
+    expect(live.archived).toEqual([])
+  })
+
+  it('uses the default directory when the Session has no recorded directory', async () => {
+    fixture = await repository()
+    const checkout = await worktreeAt(fixture, 'default-directory')
+    live = await harness(fixture, [fixture], undefined, { entries: [{ id: 'associated', directory: fixture }] })
+    const read = live.query.observeSession
+    live.query.observeSession = async (...args) => {
+      const observation = await read(...args)
+      const { cwd: _cwd, ...header } = observation.header
+      return { ...observation, header, projections: { asOfSeq: -1, values: {} } }
+    }
+    const working = live.ctx.get('workingDirectory')
+    if (working === undefined) throw new Error('fixture workingDirectory missing')
+    Object.defineProperty(working, 'defaultDirectory', { value: checkout })
+    await expect(live.ctx.worktreeConsole.removeWorktree(fixture, checkout, false, [], signal()))
+      .rejects.toMatchObject({ code: 'worktree/sessions-unconfirmed' })
+    live.removeWorkingDirectory()
+    await expect(live.ctx.worktreeConsole.removeWorktree(fixture, checkout, false, [], signal()))
+      .rejects.toMatchObject({ code: 'worktree/unavailable', details: { reason: 'no-working-directory' } })
+    expect(await registered(fixture)).toContain(checkout)
+  })
+
+  it('keeps an already archived Session archived without asking for another confirmation', async () => {
+    fixture = await repository()
+    const checkout = await worktreeAt(fixture, 'already-archived')
+    live = await harness(fixture, [fixture], undefined, { entries: [{ id: 'archived', directory: checkout }] })
+    live.archived.push('archived')
+    await live.ctx.worktreeConsole.removeWorktree(fixture, checkout, false, [], signal())
+    expect(live.archived).toEqual(['archived'])
+    expect(await registered(fixture)).not.toContain(checkout)
+  })
+
+  it('reports retained archives when cancellation interrupts archiving', async () => {
+    fixture = await repository()
+    const checkout = await worktreeAt(fixture, 'cancel-archive')
+    const controller = new AbortController()
+    live = await harness(fixture, [fixture], undefined, {
+      entries: [{ id: 'first', directory: checkout }, { id: 'second', directory: checkout }],
+      archive: () => { controller.abort('cancelled by user'); return Promise.resolve() },
+    })
+    await expect(live.ctx.worktreeConsole.removeWorktree(fixture, checkout, false, ['first', 'second'], controller.signal))
+      .rejects.toMatchObject({
+        code: 'worktree/removal-incomplete',
+        details: { archivedSessionIds: ['first'], reason: 'cancelled by user' },
+      })
+    expect(live.archived).toEqual(['first'])
+    expect(await registered(fixture)).toContain(checkout)
+  })
+
+  it('requires confirmation again when another session enters after the inventory was read', async () => {
+    fixture = await repository()
+    const checkout = await worktreeAt(fixture, 'changed-association')
+    const entries = [{ id: 'first', directory: checkout }]
+    live = await harness(fixture, [fixture], undefined, { entries })
+    await live.ctx.worktreeConsole.list(signal())
+    entries.push({ id: 'second', directory: checkout })
+    await expect(live.ctx.worktreeConsole.removeWorktree(fixture, checkout, false, ['first'], signal()))
+      .rejects.toMatchObject({ code: 'worktree/sessions-unconfirmed' })
+    expect(live.archived).toEqual([])
+    expect(await registered(fixture)).toContain(checkout)
+  })
+
+  it('does not archive sessions when unconfirmed file changes refuse the removal', async () => {
+    fixture = await repository()
+    const checkout = await worktreeAt(fixture, 'dirty-associated')
+    await writeFile(join(checkout, 'fresh.txt'), 'draft\n')
+    live = await harness(fixture, [fixture], undefined, { entries: [{ id: 'associated', directory: checkout }] })
+    await expect(live.ctx.worktreeConsole.removeWorktree(fixture, checkout, false, ['associated'], signal()))
+      .rejects.toMatchObject({ code: 'worktree/dirty' })
+    expect(live.archived).toEqual([])
+  })
+
+  it('archives persisted sessions when removing a stale worktree registration', async () => {
+    fixture = await repository()
+    const checkout = await worktreeAt(fixture, 'stale-associated')
+    await rm(checkout, { recursive: true, force: true })
+    live = await harness(fixture, [fixture], undefined, { entries: [{ id: 'cold', directory: checkout, persisted: true }] })
+    await live.ctx.worktreeConsole.removeWorktree(fixture, checkout, false, ['cold'], signal())
+    expect(live.archived).toEqual(['cold'])
+    expect(await registered(fixture)).not.toContain(checkout)
+  })
+
+  it('reports retained archives when Git refuses removal after sessions were archived', async () => {
+    fixture = await repository()
+    const checkout = await worktreeAt(fixture, 'locked-associated')
+    await git(fixture, 'worktree', 'lock', checkout)
+    live = await harness(fixture, [fixture], undefined, { entries: [{ id: 'associated', directory: checkout }] })
+    await expect(live.ctx.worktreeConsole.removeWorktree(fixture, checkout, false, ['associated'], signal()))
+      .rejects.toMatchObject({
+        code: 'worktree/removal-incomplete',
+        details: { path: checkout, archivedSessionIds: ['associated'] },
+      })
+    expect(live.archived).toEqual(['associated'])
+    expect(await registered(fixture)).toContain(checkout)
+  })
+
+  it('reports partial archives and leaves Git unchanged if a later session cannot be archived', async () => {
+    fixture = await repository()
+    const checkout = await worktreeAt(fixture, 'partial-archive')
+    live = await harness(fixture, [fixture], undefined, {
+      entries: [{ id: 'first', directory: checkout }, { id: 'active', directory: checkout }],
+      archive: id => id === 'active' ? Promise.reject(new Error('session is active')) : Promise.resolve(),
+    })
+    await expect(live.ctx.worktreeConsole.removeWorktree(fixture, checkout, false, ['first', 'active'], signal()))
+      .rejects.toMatchObject({ code: 'worktree/removal-incomplete', details: { archivedSessionIds: ['first'] } })
+    expect(live.archived).toEqual(['first'])
+    expect(await registered(fixture)).toContain(checkout)
+  })
+
+  it('refuses removal when an associated session is not accessible to the caller', async () => {
+    fixture = await repository()
+    const checkout = await worktreeAt(fixture, 'private-session')
+    live = await harness(fixture, [fixture], undefined, { entries: [{ id: 'private', directory: checkout }] })
+    live.access.allows = resource => resource.kind !== 'session'
+    await expect(live.ctx.worktreeConsole.removeWorktree(fixture, checkout, true, ['private'], signal()))
+      .rejects.toMatchObject({ code: 'worktree/session-access-denied' })
+    expect(await registered(fixture)).toContain(checkout)
+    expect(live.archived).toEqual([])
+  })
+
+  it('reads a cold Session’s persisted directory without requiring a live Session and releases the observation', async () => {
+    fixture = await repository()
+    const checkout = await worktreeAt(fixture, 'cold-checkout')
+    live = await harness(fixture, [fixture], undefined, { known: [] })
+    const dispose = vi.fn()
+    const observation: SessionObservation = {
+      source: 'prepared',
+      header: { ...Session.create(SessionId('cold')).header, cwd: fixture },
+      inheritedEventCount: SessionLogOffset(0),
+      events: [], cursor: -1,
+      projections: { asOfSeq: -1, values: { workingDirectory: checkout } },
+      retain: () => observation,
+      [Symbol.dispose]: dispose,
+    }
+    const query: Pick<SessionQueryEngine, 'observeSession'> = { observeSession: async () => observation }
+    live.query.observeSession = query.observeSession
+
+    const choices = await live.ctx.worktreeConsole.branches('cold', signal())
+    expect(choices.repositoryRoot).toBe(checkout)
+    expect(choices.branches.find(branch => branch.current)).toEqual({ name: 'cold-checkout', kind: 'local', current: true })
+    expect(dispose).toHaveBeenCalledOnce()
+    expect(live.ctx.sessions.get(SessionId('cold'))).toBeUndefined()
+  })
+
+  it('preserves an unknown-session error when a cold observation cannot find it', async () => {
+    fixture = await repository()
+    live = await harness(fixture, [fixture], undefined, { known: [] })
+    const query: Pick<SessionQueryEngine, 'observeSession'> = {
+      observeSession: () => Promise.reject(new SessionQueryError('missing', 'SESSION_QUERY_SESSION_NOT_FOUND')),
+    }
+    live.query.observeSession = query.observeSession
+    await expect(live.ctx.worktreeConsole.branches('missing', signal())).rejects.toMatchObject({ code: 'worktree/unknown-session' })
+  })
+
   // The repository's own checkout is a row: the page is the whole inventory, so
   // a user sees which worktree they are already in beside the extra ones.
   it('lists the repository’s own checkout first, then the worktrees it registered', async () => {
@@ -46,7 +276,7 @@ describe('worktree console Remote', () => {
     expect(rows[1]).toEqual({
       path: one, branch: 'brave-otter', head: expect.stringMatching(/^[0-9a-f]{40}$/) as string,
       primary: false, stale: false, dirtyFiles: [], ignoredFiles: [], outsideRepository: false, locked: false,
-      origin: 'official',
+      origin: 'official', sessionIds: [],
     })
   })
 
@@ -57,6 +287,26 @@ describe('worktree console Remote', () => {
     const rows = (await live.ctx.worktreeConsole.list(signal())).repositories[0]?.worktrees ?? []
     expect(rows.map(row => row.path)).toEqual([fixture])
     expect(rows[0]?.primary).toBe(true)
+  })
+
+  it('identifies the main checkout when the registered workspace is a linked checkout', async () => {
+    fixture = await repository()
+    const linked = await worktreeAt(fixture, 'linked')
+    live = await harness(fixture, [linked])
+    const rows = (await live.ctx.worktreeConsole.list(signal())).repositories[0]?.worktrees ?? []
+    expect(rows.find(row => row.path === fixture)?.primary).toBe(true)
+    expect(rows.find(row => row.path === linked)?.primary).toBe(false)
+    const failure = await live.ctx.worktreeConsole.removeWorktree(linked, fixture, true, [], signal())
+      .catch((error: unknown) => error)
+    expect(remoteErrorOf(failure)).toMatchObject({ code: 'worktree/primary' })
+  })
+
+  it('rejects the inventory read when a checkout cannot be inspected', async () => {
+    fixture = await repository()
+    const linked = await worktreeAt(fixture, 'broken')
+    await writeFile(join(linked, '.git'), 'gitdir: missing-administration\n')
+    live = await harness(fixture, [fixture])
+    await expect(live.ctx.worktreeConsole.list(signal())).rejects.toThrow()
   })
 
   /**
@@ -114,7 +364,7 @@ describe('worktree console Remote', () => {
     await writeFile(join(one, 'fresh.txt'), 'draft\n')
     live = await harness(fixture, [fixture])
 
-    const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, one, false, signal()).catch((error: unknown) => error)
+    const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, one, false, [], signal()).catch((error: unknown) => error)
 
     expect(remoteErrorOf(failure)).toMatchObject({ code: 'worktree/dirty', details: { path: one, files: ['fresh.txt'] } })
     expect(await registered(fixture)).toContain(one)
@@ -126,7 +376,7 @@ describe('worktree console Remote', () => {
     await writeFile(join(one, 'fresh.txt'), 'draft\n')
     live = await harness(fixture, [fixture])
 
-    expect(await live.ctx.worktreeConsole.removeWorktree(fixture, one, true, signal())).toEqual({ removed: one })
+    expect(await live.ctx.worktreeConsole.removeWorktree(fixture, one, true, [], signal())).toEqual({ removed: one })
     expect(await registered(fixture)).not.toContain(one)
   })
 
@@ -155,7 +405,7 @@ describe('worktree console Remote', () => {
     expect(row?.dirtyFiles).toEqual([])
     expect(row?.ignoredFiles).toEqual(['.env'])
 
-    const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, one, false, signal()).catch((error: unknown) => error)
+    const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, one, false, [], signal()).catch((error: unknown) => error)
     expect(remoteErrorOf(failure)).toMatchObject({ code: 'worktree/dirty', details: { files: ['.env'] } })
     expect(await registered(fixture)).toContain(one)
   })
@@ -175,7 +425,7 @@ describe('worktree console Remote', () => {
       const rows = (await live.ctx.worktreeConsole.list(signal())).repositories[0]?.worktrees ?? []
       expect(rows.find(candidate => candidate.path === outside)?.outsideRepository).toBe(true)
 
-      const outcome = await live.ctx.worktreeConsole.removeWorktree(fixture, outside, true, signal())
+      const outcome = await live.ctx.worktreeConsole.removeWorktree(fixture, outside, true, [], signal())
       expect(outcome).toEqual({ removed: outside })
       expect(await registered(fixture)).not.toContain(outside)
 
@@ -197,7 +447,7 @@ describe('worktree console Remote', () => {
     await rm(one, { recursive: true, force: true })
     live = await harness(fixture, [fixture])
 
-    expect(await live.ctx.worktreeConsole.removeWorktree(fixture, one, true, signal())).toEqual({ removed: one })
+    expect(await live.ctx.worktreeConsole.removeWorktree(fixture, one, true, [], signal())).toEqual({ removed: one })
     expect(await registered(fixture)).not.toContain(one)
   })
 
@@ -207,7 +457,7 @@ describe('worktree console Remote', () => {
     fixture = await repository()
     live = await harness(fixture, [fixture])
 
-    const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, fixture, true, signal())
+    const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, fixture, true, [], signal())
       .catch((error: unknown) => error)
 
     expect(remoteErrorOf(failure)).toMatchObject({ code: 'worktree/primary', details: { path: fixture } })
@@ -218,7 +468,7 @@ describe('worktree console Remote', () => {
     fixture = await repository()
     live = await harness(fixture, [fixture])
 
-    const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, join(fixture, 'nowhere'), true, signal())
+    const failure = await live.ctx.worktreeConsole.removeWorktree(fixture, join(fixture, 'nowhere'), true, [], signal())
       .catch((error: unknown) => error)
 
     expect(remoteErrorOf(failure)).toMatchObject({ code: 'worktree/not-found', details: { repositoryId: fixture } })

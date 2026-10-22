@@ -7,11 +7,15 @@
  * @module @deepseek-ai/dsh-experimental-worktree-console/src/types
  */
 
+import type { SessionId } from '@deepseek-ai/dsh-session'
+
 /** Which tooling placed one checkout, as far as its location can tell. */
 export type WorktreeOrigin = 'official' | 'third-party' | 'manual'
 
 /** One worktree as the management page reads it. */
 export interface WorktreeRow {
+  /** Unarchived Sessions currently working in this checkout or a subdirectory. */
+  readonly sessionIds: readonly SessionId[]
   /** Absolute checkout directory. */
   readonly path: string
   /** Short name of the checked-out branch, or null for a detached checkout. */
@@ -55,8 +59,8 @@ export interface WorktreeRow {
 /**
  * One registered repository and the worktrees Git has on record for it.
  *
- * The repository's own checkout is not a row: it is the repository, Git
- * refuses to remove it, and `prune` never touches it.
+ * The main checkout is included and marked primary, even when the registered
+ * workspace is a linked checkout.
  */
 export interface RepositoryRows {
   /** Workspace registry id; stable while the directory exists. */
@@ -146,6 +150,8 @@ export interface EnteredWorktree {
 export interface WorktreeSessionState {
   /** Whether the next step of this Session will materialize a worktree first. */
   readonly armed: boolean
+  /** Accepted intent while armed; absent after disarming or starting creation. */
+  readonly request?: WorktreeArmRequest
   /** The checkout this Session was moved into, once one exists. */
   readonly worktree: EnteredWorktree | null
   /**

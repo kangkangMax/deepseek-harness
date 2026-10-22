@@ -53,6 +53,61 @@ async function openCard(): Promise<HTMLElement> {
 }
 
 describe('base picker search', () => {
+  it('distinguishes local and remote refs that share the same short name', async () => {
+    const { onSelect } = renderPicker({
+      base: 'refs/remotes/origin/main',
+      choices: { ...MANY, branches: [
+        { name: 'origin/main', kind: 'local', current: false },
+        { name: 'origin/main', kind: 'remote', current: false },
+      ] },
+    })
+    const card = await openCard()
+    const rows = within(card).getAllByRole('menuitemradio', { name: 'origin/main' })
+    expect(rows.map(row => row.getAttribute('aria-checked'))).toEqual(['false', 'true'])
+    const remote = rows[1]
+    if (remote === undefined) throw new Error('missing remote branch row')
+    fireEvent.click(remote)
+    expect(onSelect).toHaveBeenCalledWith('refs/remotes/origin/main')
+  })
+
+  it('keeps keyboard focus in search while navigating and selecting a match', async () => {
+    const { onSelect } = renderPicker()
+    await openCard()
+    const search = await screen.findByRole('searchbox')
+    fireEvent.change(search, { target: { value: 'docs' } })
+    fireEvent.keyDown(search, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(search)
+    fireEvent.keyDown(document.activeElement ?? search, { key: 'Enter' })
+    expect(onSelect).toHaveBeenCalledWith('refs/heads/docs/readme')
+  })
+
+  it('selects the displayed match when Enter follows typing without an arrow key', async () => {
+    const { onSelect } = renderPicker()
+    await openCard()
+    const search = await screen.findByRole('searchbox')
+    fireEvent.change(search, { target: { value: 'docs' } })
+    fireEvent.keyDown(search, { key: 'Enter' })
+    expect(onSelect).toHaveBeenCalledWith('refs/heads/docs/readme')
+  })
+
+  it('can return to HEAD with the keyboard in a short list', async () => {
+    const { onSelect } = renderPicker({ choices: { ...MANY, branches: MANY.branches.slice(0, 2) } })
+    const card = await openCard()
+    const head = within(card).getByRole('menuitemradio', { name: en.switchBaseHead })
+    fireEvent.keyDown(head, { key: 'ArrowDown' })
+    fireEvent.keyDown(document.activeElement ?? head, { key: 'ArrowUp' })
+    expect(document.activeElement).toBe(head)
+    fireEvent.click(head)
+    expect(onSelect).toHaveBeenCalledWith(undefined)
+  })
+
+  it('focuses search when branches arrive after the card was opened', async () => {
+    const { rerenderWith } = renderPicker({ choices: undefined })
+    fireEvent.click(screen.getByTitle(en.switchBaseHint))
+    rerenderWith({ choices: MANY })
+    expect(await screen.findByRole('searchbox')).toBe(document.activeElement)
+  })
+
   // Seven branches cannot be scanned from a flat list, and a search field over
   // three rows would be a field that never earns its space.
   it('offers a search field only once the list is long enough to need one', async () => {
@@ -123,7 +178,7 @@ describe('base picker search', () => {
     fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'ArrowDown' })
     fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'Enter' })
 
-    await waitFor(() => { expect(onSelect).toHaveBeenCalledWith('docs/readme') })
+    await waitFor(() => { expect(onSelect).toHaveBeenCalledWith('refs/heads/docs/readme') })
   })
 
   // The remote namespace is a different revision from its local namesake, so a

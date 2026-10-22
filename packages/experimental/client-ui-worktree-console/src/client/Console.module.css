@@ -1,169 +1,119 @@
-/* The page is a two-pane inventory: repositories on the left, the selected
- * repository's worktrees on the right. Only real design tokens are used —
- * `--dsw-alias-*`, `--dsw-radius-*` — so both themes come for free. */
-
-/* Settings is a fixed-width overlay, so a viewport media query never describes
- * it: this panel can be 630px wide inside a 1500px window, and every rule below
- * has to answer to the panel's own width. The container is declared here, on the
- * page's outermost element, because `.panes` cannot query itself. */
 .section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   container: settings-pane / inline-size;
 }
 
 .header {
   display: flex;
-  align-items: flex-start;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
+}
+
+.header > div {
+  flex: 1;
+  min-width: min(240px, 100%);
 }
 
 .title {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 0 0 2px;
+  margin: 0 0 4px;
   font-size: 14px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-weight: 500;
 }
 
-/* The same branch glyph the composer switch and the bundle icon carry, so the
-   section reads as the same feature wherever it appears. */
-.titleGlyph {
+.titleGlyph,
+.branchGlyph {
   flex: none;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-label-secondary);
 }
 
-.hint {
+.hint,
+.notice,
+.empty {
   margin: 0;
   color: var(--dsw-alias-label-secondary);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 18px;
+  overflow-wrap: anywhere;
 }
 
-.notice {
-  margin: 0;
-  color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
+.empty {
+  padding: 16px;
 }
 
-/* ── two panes ───────────────────────────────────────────────────────────── */
-
-/* The repository names are directory basenames and the table's rows are branch
- * names, so neither pane can be the one that gives: both ellipsize, and the
- * branch is the one that must stay readable. 150px holds a name to about the
- * same length the branch column gets, which is the honest split. */
-.panes {
+.loading {
   display: grid;
-  grid-template-columns: 150px minmax(0, 1fr);
+  min-height: 120px;
+  place-items: center;
+}
+
+.repositories {
+  display: flex;
+  flex-direction: column;
   gap: 16px;
-  align-items: start;
 }
 
-/* Stacked on the PANEL's width, not the window's — a 900px Settings panel in a
-   1500px window still gets two columns; a 620px one does not. */
-@container settings-pane (max-width: 620px) {
-  .panes {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.repository {
+  min-width: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
 }
 
-/* The heading shares its row with the cleanup button, and the button is a long
- * sentence: without a cap it takes the row and the heading truncates to
- * "WORKTREES IN AGENT-C…", which names no repository. Capping the action
- * keeps the repository name — the one fact this row exists to say — legible,
- * and the button's own label still says what it does. */
-.paneLabel {
+.repositoryHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin: 0 0 8px;
-  padding: 0 10px;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.paneLabelText {
-  min-width: 0;
-  overflow: hidden;
-  letter-spacing: 0.04em;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.paneLabel > :last-child {
-  flex: none;
-}
-
-.repositoryList {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-module-platform);
 }
 
 .repositoryButton {
   display: flex;
+  flex: 1;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  width: 100%;
-  padding: 8px 10px;
+  min-width: 0;
+  padding: 0;
   border: 0;
-  border-radius: var(--dsw-radius-sm);
   background: transparent;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsw-alias-label-primary);
   font: inherit;
   font-size: 13px;
   text-align: left;
   cursor: pointer;
 }
 
-.repositoryButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+.repositoryButton > svg {
+  flex: none;
 }
 
-.repositoryButton[aria-current='true'] {
-  background: var(--dsw-alias-interactive-bg-active);
-  color: var(--dsw-alias-label-primary);
-  font-weight: 500;
+.expandGlyph {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.repositoryButton[aria-expanded='true'] .expandGlyph {
+  transform: rotate(90deg);
 }
 
 .repositoryName {
-  flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  font-weight: 500;
 }
 
 .repositoryCount {
   flex: none;
-  min-width: 20px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--dsw-alias-bg-module-platform);
   color: var(--dsw-alias-label-secondary);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  line-height: 18px;
-  text-align: center;
+  font-size: 12px;
 }
-
-.repositoryButton[aria-current='true'] .repositoryCount {
-  background: var(--dsw-alias-bg-base);
-  color: var(--dsw-alias-label-primary);
-}
-
-/* ── worktree table ─────────────────────────────────────────────────────── */
 
 .worktreePane {
   min-width: 0;
@@ -174,15 +124,11 @@
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  font-size: 12px;
+  font-size: 13px;
 }
 
-/* Column priorities: the branch name takes every pixel left over. Commit is not
- * a column (the hover card carries it) and the fixed columns are only as wide
- * as their content needs. `1 changed` is the longest thing the changes column
- * ever holds, and it carries its own padding in the tag. */
 .changesCell {
-  width: 84px;
+  width: 100px;
 }
 
 .sourceCell {
@@ -190,28 +136,21 @@
 }
 
 .actionsCell {
-  width: 62px;
+  width: 106px;
 }
 
 .table th {
-  padding: 0 10px 8px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
+  padding: 10px 12px;
+  border-block: 1px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-weight: 500;
   text-align: left;
-  text-transform: uppercase;
-}
-
-.table th.actionsCell {
-  padding-right: 10px;
 }
 
 .table td {
-  height: 36px;
-  padding: 0 10px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  padding: 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
   vertical-align: middle;
 }
 
@@ -219,30 +158,36 @@
   border-bottom: 0;
 }
 
-.table tbody tr:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+.table tbody tr {
+  cursor: pointer;
+}
+
+.repositoryButton:focus-visible,
+.table tbody tr:focus-visible,
+.branch:focus-visible,
+.remove:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
 }
 
 .branchCell {
   overflow: hidden;
 }
 
-/* `overflow: hidden` is the guard: when the columns squeeze, a long label is
-   clipped inside its own cell instead of running into the next one. The hover
-   card is portalled, so nothing here can clip it. */
 .branch {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  overflow: hidden;
-  font-size: 13px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
   line-height: 20px;
-}
-
-.branchGlyph {
-  flex: none;
-  color: var(--dsw-alias-label-tertiary);
+  text-align: left;
+  cursor: pointer;
 }
 
 .name {
@@ -253,47 +198,38 @@
   font-weight: 500;
 }
 
-/* A tag shares the branch cell with the branch itself, so it is trimmed to the
-   weight of its own padding: at this size these read as marks, not as words,
-   and every pixel here is a pixel the branch name does not get. The primitive
-   sets `data-tone`, so the selector needs no knowledge of its class names. */
 .branch [data-tone] {
+  flex: none;
   padding: 0 5px;
-  font-size: 10.5px;
-  line-height: 15px;
+  font-size: 11px;
+  line-height: 16px;
 }
 
-/* The tag wrapper, not the tag, carries the hover title: `Tag` takes no
-   attributes, and a status word the user cannot expand is a status word they
-   have to guess at. */
 .mark {
   display: inline-flex;
   flex: none;
 }
 
-/* Detached checkouts have no branch to name them, so the label is quieted and
-   the directory tail below is what tells two of them apart. */
-.detached {
-  flex: none;
+.detached,
+.tail,
+.sourceText,
+.dimmed {
   color: var(--dsw-alias-label-secondary);
-  font-style: italic;
-  font-weight: 400;
 }
 
 .tail {
-  flex: none;
-  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 11px;
-  color: var(--dsw-alias-label-tertiary);
+  font-family: var(--dsw-font-mono, ui-monospace, monospace);
+  font-size: 12px;
 }
 
-.clean {
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 11.5px;
-}
-
-.dimmed {
-  color: var(--dsw-alias-label-caption);
+.rowPath {
+  margin: 4px 0 0 19px;
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .changedTag {
@@ -312,28 +248,22 @@
 
 .sourceText {
   overflow: hidden;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 11.5px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Removal is always visible: a menu that only appears on hover is a menu the
-   user has to discover twice. Quiet at rest, red under the pointer, and
-   disabled rather than absent where Git would refuse — so the right edge never
-   loses a button and the row keeps its shape. */
-.table td.actionsCell {
-  padding-right: 8px;
+.table .actionsCell {
   text-align: right;
 }
 
 .remove {
-  height: 24px;
-  padding: 0 6px;
-  border: 0;
-  border-radius: 6px;
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 30%, transparent);
+  border-radius: var(--dsw-radius-sm);
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-state-error-primary);
   font: inherit;
   font-size: 12px;
   line-height: 20px;
@@ -341,115 +271,167 @@
   cursor: pointer;
 }
 
-.table tbody tr:hover .remove:not(:disabled) {
-  color: var(--dsw-alias-label-secondary);
-}
-
-.remove:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 6%, transparent);
-  color: var(--dsw-alias-state-error-primary);
-}
-
 .remove:disabled {
-  background: transparent;
-  color: var(--dsw-alias-label-caption);
+  border-color: var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary);
   cursor: not-allowed;
 }
 
-/* Narrowing drops the source column before it touches the branch name. */
+.removalHint {
+  display: block;
+  margin-top: 4px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+@media (hover: hover) {
+  .table tbody tr:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+
+  .remove:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, transparent);
+  }
+}
+
 @container (max-width: 560px) {
   .sourceCell {
     display: none;
   }
 }
 
-/* ── hover card content ─────────────────────────────────────────────────── */
+@container settings-pane (max-width: 360px) {
+  .repositoryHeader {
+    flex-wrap: wrap;
+  }
 
-.card {
+  .repositoryButton {
+    flex-wrap: wrap;
+    flex-basis: 100%;
+  }
+
+  .table,
+  .table tbody {
+    display: block;
+  }
+
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--dsw-alias-border-l2);
+  }
+
+  .table td {
+    width: auto;
+    padding: 4px 0;
+    border: 0;
+  }
+
+  .branchCell {
+    grid-column: 1 / -1;
+  }
+
+  .branch {
+    flex-wrap: wrap;
+  }
+
+  .name {
+    flex: 1 1 calc(100% - 20px);
+  }
+}
+
+.detailsDialog {
+  width: min(560px, 100%);
+  max-height: 100%;
+  gap: 0;
+  padding: 0;
+  overflow: auto;
+}
+
+.detailsHeader {
   display: flex;
-  flex-direction: column;
-  padding: 10px 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 16px 12px;
+}
+
+.detailsTitle {
+  min-width: 0;
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+
+.detailsBody {
+  padding: 0 16px 16px;
 }
 
 .cardPath {
-  display: -webkit-box;
-  overflow: hidden;
   margin: 0;
-  color: var(--dsw-alias-label-secondary);
-  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 11.5px;
-  line-height: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  line-height: 20px;
   overflow-wrap: anywhere;
-  /* A path has no spaces: only `break-all` fills each line, and a path left
-     unfilled overflows the clamp it was supposed to fit in. */
-  word-break: break-all;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+}
+
+.metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.metadata {
+  gap: 8px 16px;
+  margin: 12px 0 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .cardWarn {
   display: flex;
   gap: 6px;
-  margin: 7px 0 0;
+  margin: 12px 0 0;
   color: var(--dsw-alias-state-warn-primary);
-  font-size: 11px;
-  line-height: 15px;
+  font-size: 13px;
+  line-height: 18px;
 }
 
 .cardWarn > svg {
   flex: none;
-  margin-top: 2px;
 }
 
-.cardFoot {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 8px;
+.detailsFooter {
+  padding: 12px 16px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
 }
-
-.cardMeta {
-  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 11px;
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.cardActions {
-  display: flex;
-  gap: 6px;
-  margin-left: auto;
-}
-
-.cardAction {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 9px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--dsw-alias-label-secondary);
-  font: inherit;
-  font-size: 11px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.cardAction:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
-}
-
-/* ── removal dialog ─────────────────────────────────────────────────────── */
 
 .files {
   margin: 4px 0 0;
   padding-left: 16px;
-  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--dsw-font-mono, ui-monospace, monospace);
   overflow-wrap: anywhere;
 }
 
-/* The dialog owns its own surface; this styles the acknowledgement inside it. */
 .acknowledge {
   display: flex;
   align-items: center;

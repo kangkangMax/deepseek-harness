@@ -16,12 +16,14 @@ import type {
 
 /** What the section asks the Host to do. */
 export interface ConsoleInjected {
+  /** Report a localized operation result through the shell overlay. */
+  readonly notify: (text: string, failed?: boolean) => void
   /** Read every registered repository and its worktrees. */
   readonly list: (signal: AbortSignal) => Promise<ConsoleSnapshot>
   /** Clear stale registrations of one repository. */
   readonly prune: (repositoryId: string, signal: AbortSignal) => Promise<PruneOutcome>
   /**
-   * Remove one worktree, discarding changes when `force`.
+   * Archive the confirmed Sessions and remove one worktree, discarding changes when `force`.
    *
    * `removeWorktree` rather than `remove`: a mounted namespace installs its
    * methods on a service that already owns `remove`, and `$mount` refuses the
@@ -31,10 +33,11 @@ export interface ConsoleInjected {
     repositoryId: string,
     path: string,
     force: boolean,
+    confirmedSessionIds: readonly string[],
     signal: AbortSignal,
   ) => Promise<RemoveOutcome>
   /**
-   * Show one checkout in the Host desktop's file manager.
+   * Open one checkout directory in the Host desktop's file manager.
    *
    * Optional, and absent unless the Session Remote is mounted: the reveal is
    * that namespace's own capability, so a browser deployment without a desktop
@@ -48,7 +51,7 @@ export interface ConsoleInjected {
 /** The slice of the Session Remote a reveal goes through. */
 interface RevealRemote {
   readonly openWorkspacePath?: (
-    request: { readonly path: string; readonly action: 'reveal' },
+    request: { readonly path: string },
   ) => Promise<{ readonly ok: boolean }>
 }
 
@@ -67,10 +70,11 @@ function createReveal(ctx: Context): ((path: string) => Promise<boolean>) | unde
   const reveal = remote.openWorkspacePath
   return async (path) => {
     try {
-      return (await reveal.call(remote, { path, action: 'reveal' })).ok
-    } catch {
+      return (await reveal.call(remote, { path })).ok
+    } catch (error: unknown) {
       // A rejection and a refusal are the same outcome to the page: the
       // directory was not shown, and it says so rather than failing silently.
+      console.warn('[worktree-console] reveal failed', error)
       return false
     }
   }
@@ -79,10 +83,12 @@ function createReveal(ctx: Context): ((path: string) => Promise<boolean>) | unde
 /**
  * Build the face over the mounted Remote.
  * @param ctx - client runtime owning `ctx.remote.worktrees`.
+ * @param notify - localized operation feedback hosted outside Settings.
  * @returns face whose methods reject with the Host's `RemoteError`.
  */
-export function createConsoleFace(ctx: Context): ConsoleInjected {
+export function createConsoleFace(ctx: Context, notify: ConsoleInjected['notify']): ConsoleInjected {
   return {
+    notify,
     async list(signal) {
       const result = await ctx.remote.worktrees.list(signal)
       if (!result.ok) throw result.error
@@ -93,8 +99,8 @@ export function createConsoleFace(ctx: Context): ConsoleInjected {
       if (!result.ok) throw result.error
       return result.value
     },
-    async removeWorktree(repositoryId, path, force, signal) {
-      const result = await ctx.remote.worktrees.removeWorktree(repositoryId, path, force, signal)
+    async removeWorktree(repositoryId, path, force, confirmedSessionIds, signal) {
+      const result = await ctx.remote.worktrees.removeWorktree(repositoryId, path, force, confirmedSessionIds, signal)
       if (!result.ok) throw result.error
       return result.value
     },
@@ -135,6 +141,11 @@ export interface SwitchInjected {
   /** Read the base branches a blank Session's worktree could start from. */
   readonly branches: (sessionId: string, signal: AbortSignal) => Promise<BranchChoices>
 }
+
+/** Session directory read and actions used by the header branch control. */
+export type ContextInjected =
+  & Pick<SwitchInjected, 'state' | 'branches'>
+  & Pick<ConsoleInjected, 'reveal' | 'notify'>
 
 /**
  * Build the switch's face over the mounted Remote.

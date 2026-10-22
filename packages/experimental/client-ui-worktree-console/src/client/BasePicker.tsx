@@ -28,6 +28,7 @@ import { createPortal } from 'react-dom'
 import {
   IconBranchOutlineRegular, IconCheckOutlineRegular, IconCloseFillRegular, IconSearchOutlineRegular,
   Input, MenuGroup, MenuSurface, observeStickyMenuGroups, rankByName,
+  useAnchoredPosition,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { BranchChoices, BranchKind } from '@deepseek-ai/dsh-experimental-worktree-console/types'
 import css from './BasePicker.module.css'
@@ -56,6 +57,7 @@ const HEAD_SLOT = null
 interface Row {
   readonly id: string
   readonly name: string
+  readonly revision: string
   readonly current: boolean
 }
 
@@ -124,7 +126,14 @@ export function BasePicker(props: BasePickerProps) {
   const cardRef = useRef<HTMLDivElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
   const rowRefs = useRef<(HTMLButtonElement | null)[]>([])
-  const [position, setPosition] = useState<{ left: number; top: number } | null>(null)
+  const position = useAnchoredPosition({
+    open: open && choices !== undefined,
+    anchorRef: triggerRef,
+    panelRef: cardRef,
+    side: 'top',
+    gap: 4,
+    margin: 12,
+  })
   /**
    * The pointerdown that opened the card. The dismissal listener is registered
    * from an effect, so it mounts while that press is still propagating and
@@ -140,8 +149,9 @@ export function BasePicker(props: BasePickerProps) {
       const rows = choices.branches
         .filter(branch => branch.kind === kind)
         .map<Row>(branch => ({
-          id: `${BRANCH_PREFIX}${branch.name}`,
+          id: `${BRANCH_PREFIX}refs/${kind === 'local' ? 'heads' : 'remotes'}/${branch.name}`,
           name: branch.name,
+          revision: `refs/${kind === 'local' ? 'heads' : 'remotes'}/${branch.name}`,
           current: branch.current,
         }))
       return rows.length === 0 ? null : { id: groupId, label, rows }
@@ -168,7 +178,7 @@ export function BasePicker(props: BasePickerProps) {
   // Without a search field the walk has no text box to leave, so the card opens
   // on the pinned HEAD row — where focus lands and where ↑/↓ starts. With one,
   // the highlight stays unmoved and the first branch is the first ↓ stop.
-  const activeIndex = flat.length === 0 || highlight === HEAD_SLOT
+  const activeIndex = flat.length === 0 || highlight === HEAD_SLOT || (highlight === undefined && query.trim() === '')
     ? -1
     : Math.min(highlight ?? 0, flat.length - 1)
 
@@ -202,7 +212,7 @@ export function BasePicker(props: BasePickerProps) {
       setHighlight(HEAD_SLOT)
       headRef.current?.focus()
     }
-  }, [open, searchable])
+  }, [open, searchable, choices !== undefined])
 
   useEffect(() => {
     if (!open) return
@@ -220,37 +230,6 @@ export function BasePicker(props: BasePickerProps) {
     document.addEventListener('pointerdown', onPointerDown)
     return () => { document.removeEventListener('pointerdown', onPointerDown) }
   }, [open, close])
-
-  // The card hangs above the trigger, because the composer tool row sits at the
-  // bottom of a card that clips — the same reason the permission chip beside it
-  // opens upward.
-  useLayoutEffect(() => {
-    if (!open) { setPosition(null); return }
-    const place = (): void => {
-      /* v8 ignore next 2 -- the trigger ref is attached whenever the card is. */
-      const rect = triggerRef.current?.getBoundingClientRect()
-      if (rect === undefined) return
-      const MARGIN = 12
-      const width = cardRef.current?.offsetWidth ?? 0
-      const height = cardRef.current?.offsetHeight ?? 0
-      let left = rect.left
-      let top = rect.top - 4 - height
-      if (width > 0) left = Math.min(Math.max(left, MARGIN), window.innerWidth - width - MARGIN)
-      if (height > 0) top = Math.min(Math.max(top, MARGIN), window.innerHeight - height - MARGIN)
-      setPosition(current => current?.left === left && current.top === top ? current : { left, top })
-    }
-    place()
-    window.addEventListener('scroll', place, true)
-    window.addEventListener('resize', place)
-    const card = cardRef.current
-    const observer = typeof ResizeObserver !== 'undefined' && card !== null ? new ResizeObserver(place) : null
-    if (card !== null) observer?.observe(card)
-    return () => {
-      observer?.disconnect()
-      window.removeEventListener('scroll', place, true)
-      window.removeEventListener('resize', place)
-    }
-  }, [open, query, flat.length])
 
   // Sticky headings observe the scrolling element, which only exists once the
   // card is mounted; the effect re-runs per query so a filter that empties a
@@ -284,7 +263,8 @@ export function BasePicker(props: BasePickerProps) {
     // With no field, focus is on a row and Enter is the browser's own click.
     if (event.key === 'Enter' && searchable) {
       event.preventDefault()
-      settleRow(highlight === HEAD_SLOT || highlight === undefined ? undefined : flat[highlight]?.name)
+      if (flat.length === 0 && query.trim() !== '' && highlight !== HEAD_SLOT) return
+      settleRow(activeIndex < 0 ? undefined : flat[activeIndex]?.revision)
       return
     }
     // Tab settles like Enter and Shift+Tab leaves like Escape, so the card's keys
@@ -295,29 +275,27 @@ export function BasePicker(props: BasePickerProps) {
         close(true)
         return
       }
-      settleRow(highlight === HEAD_SLOT || highlight === undefined ? undefined : flat[highlight]?.name)
+      if (flat.length === 0 && query.trim() !== '' && highlight !== HEAD_SLOT) { close(true); return }
+      settleRow(activeIndex < 0 ? undefined : flat[activeIndex]?.revision)
       return
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return
-    // HEAD is pinned above the field, so with a search field the walk covers it as
-    // slot 0 and the branches after it; without one, slot 0 is already the first
-    // branch and HEAD is where the walk starts rather than a stop.
-    const headSlot = searchable ? 1 : 0
-    const total = flat.length + headSlot
-    if (total === 0) return
+    const total = flat.length + 1
     event.preventDefault()
-    const from = highlight === HEAD_SLOT || highlight === undefined ? 0 : highlight + headSlot
+    const from = highlight === HEAD_SLOT || highlight === undefined ? 0 : highlight + 1
     const slot = event.key === 'Home' ? 0 : event.key === 'End' ? total - 1
       : (from + (event.key === 'ArrowDown' ? 1 : -1) + total) % total
-    if (searchable && slot === 0) {
+    if (slot === 0) {
       setHighlight(HEAD_SLOT)
-      searchRef.current?.focus()
+      if (searchable) searchRef.current?.focus()
+      else headRef.current?.focus()
       return
     }
-    const next = slot - headSlot
+    const next = slot - 1
     if (next < 0 || next >= flat.length) return
     setHighlight(next)
-    rowRefs.current[next]?.focus()
+    if (searchable) searchRef.current?.focus()
+    else rowRefs.current[next]?.focus()
   }
 
   const trigger = (
@@ -329,6 +307,7 @@ export function BasePicker(props: BasePickerProps) {
       disabled={busy}
       aria-haspopup="menu"
       aria-expanded={open}
+      aria-controls={open ? `${id}-base` : undefined}
       onPointerDown={(event) => { openingPress.current = event.nativeEvent }}
       onClick={() => {
         setQuery('')
@@ -337,7 +316,7 @@ export function BasePicker(props: BasePickerProps) {
       }}
     >
       <span className={css.triggerLabel}>{props.label}</span>
-      <span className={css.triggerValue}>{base ?? props.headLabel}</span>
+      <span className={css.triggerValue}>{base?.replace(/^refs\/(?:heads|remotes)\//, '') ?? props.headLabel}</span>
     </button>
   )
 
@@ -345,6 +324,7 @@ export function BasePicker(props: BasePickerProps) {
   const card = outsideRepository
     ? <MenuSurface
       ref={cardRef}
+      id={`${id}-base`}
       className={css.card}
       style={position ?? MEASURE_STYLE}
       role="menu"
@@ -362,6 +342,7 @@ export function BasePicker(props: BasePickerProps) {
     >
       <button
         ref={headRef}
+        id={`${id}-head`}
         type="button"
         role="menuitemradio"
         aria-checked={selectedId === HEAD_ID}
@@ -387,6 +368,10 @@ export function BasePicker(props: BasePickerProps) {
           type="text"
           role="searchbox"
           aria-label={props.searchLabel}
+          aria-controls={`${id}-base`}
+          aria-activedescendant={highlight === HEAD_SLOT
+            ? `${id}-head`
+            : activeIndex < 0 ? undefined : `${id}-row-${activeIndex}`}
           placeholder={props.searchLabel}
           value={query}
           onChange={(event) => {
@@ -419,6 +404,7 @@ export function BasePicker(props: BasePickerProps) {
               const active = at === activeIndex
               return <button
                 key={row.id}
+                id={`${id}-row-${at}`}
                 ref={(node) => { rowRefs.current[at] = node }}
                 type="button"
                 role="menuitemradio"
@@ -429,7 +415,7 @@ export function BasePicker(props: BasePickerProps) {
                 title={row.name}
                 onFocus={() => { setHighlight(at) }}
                 onMouseMove={() => { if (!active) setHighlight(at) }}
-                onClick={() => { settleRow(row.name) }}
+                onClick={() => { settleRow(row.revision) }}
               >
                 <IconBranchOutlineRegular className={css.glyph} size={12} />
                 <span className={css.rowName}>{row.name}</span>

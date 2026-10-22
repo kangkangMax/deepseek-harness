@@ -10,12 +10,16 @@
  */
 
 import { Context } from '@deepseek-ai/cordis'
+import { isAbsolute, relative } from 'node:path'
 import z from '@deepseek-ai/schemastery'
+import type {} from '@deepseek-ai/dsh-agent'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-api-remote-access'
 import type {} from '@deepseek-ai/dsh-fs'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
-import type { SessionId, Session } from '@deepseek-ai/dsh-session'
+import { SessionId, type Session } from '@deepseek-ai/dsh-session'
+import { SessionQueryError } from '@deepseek-ai/dsh-session-query'
+import type {} from '@deepseek-ai/dsh-session-projection'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import type { WorkingDirectoryService } from '@deepseek-ai/dsh-working-directory'
 import { worktreeRuntime } from './enter.ts'
@@ -53,8 +57,18 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
      * The directory may remain on disk while the repository has no record.
      */
     'worktree/remove-partial': { readonly path: string; readonly reason: string }
+    /** The caller has not confirmed every currently associated Session. */
+    'worktree/sessions-unconfirmed': { readonly path: string }
+    /** The caller cannot archive every associated Session. */
+    'worktree/session-access-denied': { readonly path: string }
+    /** Archiving failed before the checkout was removed. */
+    'worktree/session-archive-failed': { readonly path: string; readonly reason: string }
+    /** Removal failed after some Sessions were durably archived; those archives remain. */
+    'worktree/removal-incomplete': { readonly path: string; readonly archivedSessionIds: readonly string[]; readonly reason: string }
     /** No live Session carries that id. */
     'worktree/unknown-session': { readonly sessionId: string }
+    /** A turn has already started, so this Session cannot be armed. */
+    'worktree/session-started': { readonly sessionId: string }
     /** The official worktree runtime is not loaded, so nothing can be entered. */
     'worktree/unavailable': { readonly reason: string }
   }
@@ -167,8 +181,10 @@ export class WorktreeConsole extends TypertRemoteService {
   }
 
   private stateOf(sessionId: string): WorktreeSessionState {
+    const request = this.armed.get(sessionId)
     return {
-      armed: this.armed.has(sessionId),
+      armed: request !== undefined,
+      ...(request === undefined ? {} : { request }),
       worktree: this.entered.get(sessionId) ?? null,
       failure: this.failures.get(sessionId) ?? null,
     }
@@ -209,13 +225,32 @@ export class WorktreeConsole extends TypertRemoteService {
   @Remote({ name: 'branches', resources: { session: sessionResource } })
   async branches(sessionId: string, signal: AbortSignal): Promise<BranchChoices> {
     signal.throwIfAborted()
-    const session = this.sessionOf(sessionId)
     // Read rather than inject: this is a picker's read, and a composition
     // without the directory service gets an empty choice instead of a plugin
     // that refuses to activate.
-    const working = this.ctx.get('workingDirectory') as Pick<WorkingDirectoryService, 'get'> | undefined
-    if (session === undefined || working === undefined) return { repositoryRoot: null, branches: [] }
-    const repositoryRoot = await this.git.topLevel(working.get(session), signal)
+    const working = this.ctx.get('workingDirectory') as Pick<WorkingDirectoryService, 'get' | 'defaultDirectory'> | undefined
+    const query = this.ctx.get('sessionQuery')
+    let directory: string
+    if (query === undefined) {
+      const session = this.sessionOf(sessionId)
+      if (session === undefined || working === undefined) return { repositoryRoot: null, branches: [] }
+      directory = working.get(session)
+    } else {
+      try {
+        using observation = await query.observeSession(SessionId(sessionId), { signal })
+        if (working === undefined) return { repositoryRoot: null, branches: [] }
+        if (observation.projections === undefined) {
+          throw new RemoteError('worktree/unavailable', 'Session projections are unavailable', { reason: 'no-session-projections' })
+        }
+        directory = observation.projections.values.workingDirectory ?? observation.header.cwd ?? working.defaultDirectory
+      } catch (error: unknown) {
+        if (error instanceof SessionQueryError && error.code === 'SESSION_QUERY_SESSION_NOT_FOUND') {
+          throw new RemoteError('worktree/unknown-session', `no Session "${sessionId}"`, { sessionId })
+        }
+        throw error
+      }
+    }
+    const repositoryRoot = await this.git.topLevel(directory, signal)
     if (repositoryRoot === null) return { repositoryRoot: null, branches: [] }
     return { repositoryRoot, branches: await this.git.branches(repositoryRoot, signal) }
   }
@@ -241,7 +276,18 @@ export class WorktreeConsole extends TypertRemoteService {
     // The client offers the switch only for an empty Session, but the Host does
     // not take that on trust from the wire: a stale tab or a replay must not be
     // able to move a Session that is already under way.
-    this.sessionOf(sessionId)
+    const session = this.sessionOf(sessionId)
+    const projections = this.ctx.get('sessionProjections')
+    if (session === undefined || projections === undefined) {
+      throw new RemoteError('worktree/unavailable', 'Session state is unavailable', { reason: 'no-session-state' })
+    }
+    const boundary = projections.stateOf(session, 'turnBoundary')
+    if (boundary === undefined) {
+      throw new RemoteError('worktree/unavailable', 'Session turn state is unavailable', { reason: 'no-turn-state' })
+    }
+    if (boundary.openTurnStartSeq !== null || boundary.lastTurn !== 0) {
+      throw new RemoteError('worktree/session-started', 'Start a new Session to create a worktree', { sessionId })
+    }
     this.armed.set(sessionId, request)
     this.failures.delete(sessionId)
     return this.stateOf(sessionId)
@@ -305,9 +351,42 @@ export class WorktreeConsole extends TypertRemoteService {
     return found
   }
 
-  private async readWorktrees(repository: RepositoryRef, signal: AbortSignal): Promise<readonly WorktreeRow[]> {
+  private async sessionDirectories(signal: AbortSignal): Promise<ReadonlyMap<SessionId, string>> {
+    const query = this.ctx.get('sessionQuery')
+    if (query === undefined) {
+      throw new RemoteError('worktree/unavailable', 'Session history is required to find associated Sessions', { reason: 'no-session-query' })
+    }
+    const directories = new Map<SessionId, string>()
+    const archived = new Set(this.ctx.workspaceRegistry.archivedSessionIds)
+    for (const { header } of await query.listSessions(signal)) {
+      if (archived.has(header.id)) continue
+      using observation = await query.observeSession(header.id, { signal })
+      if (observation.projections === undefined) {
+        throw new RemoteError('worktree/unavailable', 'Session projections are required to find associated Sessions', { reason: 'no-session-projections' })
+      }
+      const directory = observation.projections.values.workingDirectory ?? observation.header.cwd
+        ?? this.ctx.get('workingDirectory')?.defaultDirectory
+      if (directory === undefined) {
+        throw new RemoteError('worktree/unavailable', 'Session working directory is unavailable', { reason: 'no-working-directory' })
+      }
+      directories.set(header.id, directory)
+    }
+    return directories
+  }
+
+  private associatedSessions(path: string, directories: ReadonlyMap<SessionId, string>): SessionId[] {
+    return [...directories].filter(([, directory]) => {
+      const tail = relative(path, directory)
+      return tail === '' || (tail !== '..' && !tail.startsWith('../') && !tail.startsWith('..\\') && !isAbsolute(tail))
+    }).map(([id]) => id)
+  }
+
+  private async readWorktrees(
+    repository: RepositoryRef, directories: ReadonlyMap<SessionId, string>, signal: AbortSignal,
+  ): Promise<readonly WorktreeRow[]> {
     const rows: WorktreeRow[] = []
-    for (const entry of await this.git.list(repository.path, signal)) {
+    const entries = await this.git.list(repository.path, signal)
+    for (const entry of entries) {
       signal.throwIfAborted()
       if (entry.bare) continue
       // The repository's own checkout is a row like any other. Leaving it out
@@ -315,14 +394,14 @@ export class WorktreeConsole extends TypertRemoteService {
       // worktrees here" beside a directory the user is working in; including
       // it is what makes the page an inventory. Removal is refused below, so
       // the extra row costs the user nothing.
-      const primary = entry.path === repository.path
+      const primary = entry === entries[0]
       const present = await this.exists(entry.path, signal)
-      // One uninspectable checkout degrades its own row instead of blanking the
-      // whole page with a rejection.
       const risk = present
-        ? await this.git.status(repository.path, entry.path, signal).catch(() => ({ changed: [], ignored: [] }))
+        ? await this.git.status(repository.path, entry.path, signal)
         : { changed: [], ignored: [] }
       rows.push({
+        sessionIds: this.associatedSessions(entry.path, directories)
+          .filter(id => this.ctx.remoteAccess.allows({ kind: 'session', id })),
         path: entry.path,
         branch: shortBranch(entry.branch),
         head: entry.head,
@@ -347,13 +426,14 @@ export class WorktreeConsole extends TypertRemoteService {
   async list(signal: AbortSignal): Promise<ConsoleSnapshot> {
     signal.throwIfAborted()
     const repositories: RepositoryRows[] = []
+    const directories = await this.sessionDirectories(signal)
     for (const repository of await listRepositories(this.ctx, this.git, signal)) {
       // A read that spans resources names none, so the Gateway decided it on
       // `global`; each row is then filtered on its own repository. A caller
       // bound to one workspace keeps that one and loses the rest, and the
       // Host still refuses a direct `prune` or removal outside its bindings.
       if (!this.ctx.remoteAccess.allows({ kind: 'workspace', id: workspaceResource(repository.id) })) continue
-      repositories.push({ ...repository, worktrees: await this.readWorktrees(repository, signal) })
+      repositories.push({ ...repository, worktrees: await this.readWorktrees(repository, directories, signal) })
     }
     return { repositories }
   }
@@ -378,7 +458,9 @@ export class WorktreeConsole extends TypertRemoteService {
   }
 
   /**
-   * Remove one worktree and its registration.
+   * Archive associated inactive Sessions, then remove the checkout and registration.
+   * Archives remain if a later operation fails; `worktree/removal-incomplete`
+   * identifies them. Session records and chat history are retained.
    *
    * The wire name is `removeWorktree` rather than `remove`: every mounted
    * namespace installs its methods on a service whose own surface already owns
@@ -387,24 +469,70 @@ export class WorktreeConsole extends TypertRemoteService {
    * @param repositoryId - registered repository owning the checkout.
    * @param path - absolute checkout path.
    * @param force - discard uncommitted changes instead of refusing.
+   * @param confirmedSessionIds - associated Sessions the user explicitly agreed to archive.
    * @param signal - cancellation.
    * @returns the removed checkout path.
    */
   @Remote({ name: 'removeWorktree', resources: { workspace: workspaceResource } })
-  async removeWorktree(repositoryId: string, path: string, force: boolean, signal: AbortSignal): Promise<RemoveOutcome> {
+  async removeWorktree(
+    repositoryId: string, path: string, force: boolean, confirmedSessionIds: readonly string[], signal: AbortSignal,
+  ): Promise<RemoveOutcome> {
     signal.throwIfAborted()
     const repository = await this.requireRepository(repositoryId, signal)
-    const entry = (await this.git.list(repository.path, signal)).find(candidate => candidate.path === path)
+    const entries = await this.git.list(repository.path, signal)
+    const entry = entries.find(candidate => candidate.path === path)
     if (entry === undefined) {
       throw new RemoteError('worktree/not-found', `no worktree at "${path}"`, { repositoryId, path })
     }
     // The repository's own checkout is the last row a user may act on: Git
     // refuses to remove it, and there is no directory to delete either, so the
     // page reports the refusal instead of offering an action that cannot run.
-    if (entry.path === repository.path) {
+    if (entry === entries[0]) {
       throw new RemoteError('worktree/primary', `"${path}" is the repository's own checkout`, { path })
     }
-    if (!await this.exists(path, signal)) {
+    const present = await this.exists(path, signal)
+    if (present) {
+      const risk = await this.git.status(repository.path, path, signal)
+      const atRisk = [...risk.changed, ...risk.ignored]
+      if (atRisk.length > 0 && !force) {
+        throw new RemoteError('worktree/dirty', `"${path}" has changes or ignored files`, { path, files: atRisk })
+      }
+    }
+    const sessionIds = this.associatedSessions(path, await this.sessionDirectories(signal))
+    for (const id of sessionIds) {
+      if (!this.ctx.remoteAccess.allows({ kind: 'session', id })) {
+        throw new RemoteError('worktree/session-access-denied', 'Access to an associated Session is required', { path })
+      }
+      if (!confirmedSessionIds.includes(id)) {
+        throw new RemoteError('worktree/sessions-unconfirmed', 'Refresh and confirm the associated Sessions before removing this worktree', { path })
+      }
+    }
+    const archivedSessionIds: SessionId[] = []
+    try {
+      for (const id of sessionIds) {
+        signal.throwIfAborted()
+        try {
+          await this.ctx.workspaceRegistry.archiveSession(id)
+        } catch (error: unknown) {
+          throw new RemoteError('worktree/session-archive-failed', 'Stop active Session work and retry the removal', {
+            path, reason: error instanceof Error ? error.message : String(error),
+          }, { cause: error })
+        }
+        archivedSessionIds.push(id)
+      }
+      return await this.removeCheckout(repository, path, present, force, signal)
+    } catch (error: unknown) {
+      if (archivedSessionIds.length === 0) throw error
+      throw new RemoteError('worktree/removal-incomplete', 'Some Sessions were archived. Refresh worktrees before retrying; archived chats remain recoverable.', {
+        path, archivedSessionIds, reason: error instanceof Error ? error.message : String(error),
+      }, { cause: error })
+    }
+  }
+
+  private async removeCheckout(
+    repository: RepositoryRef, path: string, present: boolean, force: boolean, signal: AbortSignal,
+  ): Promise<RemoveOutcome> {
+    if (!present) {
       // A registration without a checkout is a bookkeeping row, not a
       // directory: the repair is pruning, and it deletes no files because none
       // are there. `git worktree prune` visits every stale registration in one
@@ -415,14 +543,6 @@ export class WorktreeConsole extends TypertRemoteService {
       }
       this.forget(path)
       return { removed: path }
-    }
-    // Re-read the working tree here rather than trusting the page's snapshot:
-    // the confirmation the user saw may be older than what is now at risk.
-    // Ignored files count — a removal deletes them too.
-    const risk = await this.git.status(repository.path, path, signal)
-    const atRisk = [...risk.changed, ...risk.ignored]
-    if (atRisk.length > 0 && !force) {
-      throw new RemoteError('worktree/dirty', `"${path}" has changes or ignored files`, { path, files: atRisk })
     }
     try {
       await this.git.remove(repository.path, path, force, signal)

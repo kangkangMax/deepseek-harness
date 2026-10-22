@@ -32,10 +32,14 @@ function renderSwitch(
     then?: WorktreeSessionState
     after?: WorktreeSessionState
     rejects?: unknown
+    armRejects?: unknown
     choices?: BranchChoices
   } = {},
 ) {
-  const arm = vi.fn(async () => options.after ?? idle({ armed: true }))
+  const arm = vi.fn(async (_sessionId: string, request: { from?: string }) => {
+    if (options.armRejects !== undefined) throw options.armRejects
+    return options.after ?? idle({ armed: true, request })
+  })
   const disarm = vi.fn(async () => idle())
   let reads = 0
   const state = vi.fn(async () => {
@@ -147,6 +151,7 @@ describe('composer worktree switch', () => {
     expect(screen.queryByRole('checkbox')).toBeNull()
     // The row ellipsizes; the element still carries the whole reason.
     const [reported] = screen.getAllByRole('status')
+    if (reported === undefined) throw new Error('missing worktree refusal')
     expect(reported.getAttribute('title')).toContain('sandbox_apply: Operation not permitted')
   })
 
@@ -182,6 +187,22 @@ describe('composer worktree switch', () => {
 })
 
 describe('composer worktree base branch', () => {
+  it('keeps the accepted base visible when changing it fails', async () => {
+    renderSwitch({
+      state: idle({ armed: true, request: { from: 'refs/heads/main' } }),
+      armRejects: { code: 'offline' },
+    })
+    fireEvent.click(await screen.findByTitle(en.switchBaseHint))
+    fireEvent.click(await screen.findByText('feature/one'))
+    expect(await screen.findByText(/offline/)).toBeTruthy()
+    expect(screen.getByTitle(en.switchBaseHint).textContent).toContain('main')
+    expect(screen.getByTitle(en.switchBaseHint).textContent).not.toContain('feature/one')
+  })
+
+  it('restores the accepted base from the Host when the control mounts', async () => {
+    renderSwitch({ state: idle({ armed: true, request: { from: 'refs/heads/feature/one' } }) })
+    expect((await screen.findByTitle(en.switchBaseHint)).textContent).toContain('feature/one')
+  })
   // An unchecked box has nothing to qualify yet, and reading the branch list
   // for it would spend a Git call on every mount of every conversation.
   it('keeps the picker away, and unread, until the intent is set', async () => {
@@ -231,7 +252,7 @@ describe('composer worktree base branch', () => {
     fireEvent.click(screen.getByText('origin/main'))
 
     await waitFor(() => {
-      expect(arm).toHaveBeenCalledWith('session-1', { from: 'origin/main' }, expect.anything())
+      expect(arm).toHaveBeenCalledWith('session-1', { from: 'refs/remotes/origin/main' }, expect.anything())
     })
     // The trigger names the ref that will be resolved, not a shortened label.
     expect(await screen.findByText('origin/main')).toBeTruthy()
@@ -244,7 +265,7 @@ describe('composer worktree base branch', () => {
     fireEvent.click(await screen.findByText('feature/one'))
 
     await waitFor(() => {
-      expect(arm).toHaveBeenCalledWith('session-1', { from: 'feature/one' }, expect.anything())
+      expect(arm).toHaveBeenCalledWith('session-1', { from: 'refs/heads/feature/one' }, expect.anything())
     })
     expect(await screen.findByText('feature/one')).toBeTruthy()
   })

@@ -37,7 +37,7 @@ describe('porcelain grammars', () => {
       'detached',
       'locked',
       '',
-    ].join('\n'))
+    ].join('\0'))
 
     expect(entries).toEqual([
       { path: '/repos/dsh', head: 'aaa111', branch: 'refs/heads/main', bare: false, locked: false, prunable: false },
@@ -45,6 +45,11 @@ describe('porcelain grammars', () => {
       { path: '/repos/dsh/.agents/worktrees/gone', head: 'ccc333', branch: 'refs/heads/lost', bare: false, locked: false, prunable: true },
       { path: '/repos/dsh/.agents/worktrees/detached', head: 'ddd444', branch: null, bare: false, locked: true, prunable: false },
     ])
+  })
+
+  it('preserves newlines and quotation marks in a worktree directory', () => {
+    const path = '/repos/a\n"quoted"'
+    expect(parseWorktreeList(`worktree ${path}\0HEAD abc\0detached\0\0`)[0]?.path).toBe(path)
   })
 
   it('reads local branches and remote-tracking refs, and skips a remote’s HEAD pointer', () => {
@@ -77,11 +82,12 @@ describe('porcelain grammars', () => {
       '?? fresh.txt',
       '!! .env',
       'R  new.txt\0old.txt\0',
+      ' R renamed.txt\0source.txt\0',
       '',
     ].join('\0'))).toEqual({
       // The NUL-separated rename record carries its source as the next token,
       // which the parser consumes rather than reporting.
-      changed: ['tracked.txt', 'fresh.txt', 'new.txt'],
+      changed: ['tracked.txt', 'fresh.txt', 'new.txt', 'renamed.txt'],
       ignored: ['.env'],
     })
   })

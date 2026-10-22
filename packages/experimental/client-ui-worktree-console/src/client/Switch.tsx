@@ -37,6 +37,10 @@ export type WorktreeSwitchProps =
   & PropsLocale<typeof NS>
 
 export function WorktreeSwitch(props: WorktreeSwitchProps) {
+  return <SessionSwitch key={props.sessionId} {...props} />
+}
+
+function SessionSwitch(props: WorktreeSwitchProps) {
   const { sessionId, t } = props
   const blank = props.useSession(value => value.blank)
   const running = props.useSession(value => value.running)
@@ -44,13 +48,15 @@ export function WorktreeSwitch(props: WorktreeSwitchProps) {
   const [failure, setFailure] = useState<unknown>(undefined)
   const [busy, setBusy] = useState(false)
   const [choices, setChoices] = useState<BranchChoices | undefined>(undefined)
-  /** Explicit base revision, or undefined while the step is left to resolve HEAD. */
-  const [base, setBase] = useState<string | undefined>(undefined)
+  const base = state?.request?.from
 
   const alive = useRef(true)
   const face = useRef(props)
   face.current = props
-  useEffect(() => () => { alive.current = false }, [])
+  useEffect(() => {
+    alive.current = true
+    return () => { alive.current = false }
+  }, [])
 
   /** One read of the Session's arming state, cancellable with the caller. */
   const readState = useCallback((signal: AbortSignal): void => {
@@ -118,7 +124,7 @@ export function WorktreeSwitch(props: WorktreeSwitchProps) {
   // which is the only place this reason ever appears.
   if (state.failure !== null) {
     const reason = t('switchArmFailed', { reason: state.failure })
-    return <span className={css.wrap}>
+    return <span className={css.wrap} data-worktree-switch>
       <span className={css.failure} role="status" title={reason}>{reason}</span>
     </span>
   }
@@ -144,7 +150,6 @@ export function WorktreeSwitch(props: WorktreeSwitchProps) {
   // reads as a label that happens to be clickable.
   const toggle = (checked: boolean): void => {
     if (!checked) {
-      setBase(undefined)
       setBusy(true)
       setFailure(undefined)
       const signal = new AbortController().signal
@@ -158,7 +163,6 @@ export function WorktreeSwitch(props: WorktreeSwitchProps) {
   }
 
   const select = (revision: string | undefined): void => {
-    setBase(revision)
     rearm(revision)
   }
 

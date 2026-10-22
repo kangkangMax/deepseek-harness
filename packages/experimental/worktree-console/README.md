@@ -1,5 +1,5 @@
 ---
-description: "List, prune, and remove the Git worktrees of the registered workspaces from the Plugins page, and arm an empty Session to enter one on its next step. Reads Git's own registrations, so a checkout any tool created stays visible."
+description: "List, prune, and remove the Git worktrees of registered workspaces from Settings, and arm an empty Session to enter one on its next step."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-List, prune, and remove the Git worktrees of the registered workspaces from the Plugins page, and arm an empty Session to enter one on its next step. Reads Git's own registrations, so a checkout any tool created stays visible.
+List, prune, and remove the Git worktrees of registered workspaces from Settings, and arm an empty Session to enter one on its next step. Reads Git's own registrations, so a checkout any tool created stays visible.
 
 ## Table of Contents
 
@@ -30,14 +30,18 @@ Mount alongside `subprocess`, `sandbox`, `fs`, and `workspaceRegistry`. Every me
 | --- | --- |
 | `list()` | Every registered repository that is a Git repository root, with every worktree Git has on record for it — including the repository's own checkout, which reports `primary`. |
 | `prune(repositoryId)` | Clear registrations whose checkout directory is gone. Idempotent; reports only what Git actually cleared. |
-| `removeWorktree(repositoryId, path, force)` | Remove one worktree and its registration. Refuses a dirty checkout unless `force` is set, refuses the repository's own checkout outright, and clears a stale registration without touching the filesystem. |
+| `removeWorktree(repositoryId, path, force, confirmedSessionIds)` | Archive the confirmed associated Sessions, then remove the worktree and its registration. Refuses unconfirmed Sessions, active Sessions, and dirty files without `force`. The primary checkout is protected. |
 | `arm(sessionId, request)` / `disarm(sessionId)` | Set or drop an intent so the Session's next step materializes a worktree first. |
-| `state(sessionId)` | The arm flag, the checkout once one exists, and the last failure. |
+| `state(sessionId)` | The arm flag, accepted `request` while armed, the checkout once one exists, and the last failure. |
 | `branches(sessionId)` | The Session directory's repository and its local branches, for the composer's base picker. A null repository means that directory is outside every repository. |
 
-`arm` needs the official worktree runtime to be loaded; without it, `arm` fails with `worktree/unavailable` and the rest of the page keeps working.
+`arm` requires the official worktree runtime, a live Session, and its `sessionProjections` turn state. Missing providers or turn state fail with `worktree/unavailable`; a Session with a started turn fails with `worktree/session-started`. The remaining management methods stay available.
 
-`branches` reports the repository of the Session's *current* directory, because that is where the armed step creates the checkout. It reads `sessions` and `workingDirectory` rather than injecting them, so a composition without either reports no repository instead of failing to activate.
+`branches` reports the repository of the Session's current directory for both the header branch control and the composer's base picker. When `sessionQuery` is available, a disposable observation supplies the persisted working-directory projection without starting an Agent. Without it, the method reads the attached Session through `sessions`. A composition without `workingDirectory` reports no repository instead of failing to activate; an unavailable or unreadable Session is reported as an error.
+
+`list` and `removeWorktree` require `sessionQuery` and working-directory projections. Each row's `sessionIds` identifies accessible, unarchived Sessions whose current directory is the checkout or a subdirectory, including persisted Sessions after a Host restart. Removal rechecks those associations and requires access to every associated Session and explicit confirmation of its id. New associations return `worktree/sessions-unconfirmed` before any archive or deletion. File-loss confirmation remains separate.
+
+Archiving retains chat history and uses the Workspace registry's durable archive and activity checks. A failed archive prevents checkout removal. If a later archive or Git operation fails, `worktree/removal-incomplete` reports the archived ids; those archives remain, and the caller must refresh before retrying. A stale row follows the same confirmation and archival rules. `prune` only clears Git registrations and does not archive Sessions.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
@@ -46,7 +50,7 @@ The service owns no registry. The truth is `git worktree list` per repository, r
 
 Source is inferred from a path table rather than recorded: the official plugin's pool is `<repository>/.agents/worktrees`, and a checkout under a `worktree-space` container is attributed to `dsh-worktree-space`. A checkout no rule claims reports as `manual` - a visible unknown rather than a confident wrong answer. Nothing that deletes consults the label.
 
-Every git command runs unconfined by a shell, with lazily-fetched objects, repository hooks, the filesystem monitor, and path quoting all disabled. The sandbox fence root is the repository being operated on, which covers both the shared `.git` and the official pool inside it.
+Git commands run without a shell or sandbox confinement, with lazy fetching, hooks, and filesystem monitoring disabled. Worktree inventory uses NUL-delimited paths. Git's first registration identifies the main checkout even when the registered workspace is a linked checkout. A status-read failure rejects the inventory instead of reporting an unreadable checkout as clean.
 
 Entering a worktree is one delegation to the official runtime, which publishes the new working directory itself as the last step of a successful creation.
 
@@ -73,9 +77,10 @@ The directory change appends context after retained history rather than replacin
 
 - **Source is inferred, not recorded** — a plugin that changes its default landing spot makes its checkouts report as `manual`. The page shows a visible unknown rather than misattributing them, and no repair depends on the label.
 - **The page's own git commands are unconfined** — they are actions a person asked for, with arguments built in this package and paths read back from `git worktree list`, so the sandbox seam is never consulted; what an *agent* may do to a worktree is a separate path with its own policy.
-- **Ignored files are not part of the change check** — `git status --porcelain` reports tracked and untracked changes only, so a checkout whose only content is ignored reads as clean.
+- **Ignored files are separate from changes** — inventory includes ignored paths, and unconfirmed removal refuses to discard them.
 - **Session state is process-local** — the armed intent and the entered checkout live in memory and do not survive a Host restart.
 
+<a id="dev-note"></a>
 ### Dev Note
 
 <details>
