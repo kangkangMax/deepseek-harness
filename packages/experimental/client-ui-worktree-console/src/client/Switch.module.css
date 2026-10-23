@@ -1,0 +1,27 @@
+.wrap {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The composer tool row runs 12px; the primitive's own accent-colored
+   checkmark carries the on/off state, so nothing else has to. */
+.switch {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.switch:has(input:checked) {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* The tool row is short and the Host's reason is a whole command line, so the
+   text ellipsizes and the element carries the full sentence for a hover. */
+.failure {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}

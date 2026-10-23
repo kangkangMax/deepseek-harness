@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Worktree management",
+    "description": "List, prune, and remove the Git worktrees in your workspaces, and start a session inside one."
+  }
+}

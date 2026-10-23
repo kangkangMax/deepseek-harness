@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/worktree-console-bundle/README.md
+/:
+  en: 68f5fb9ea1567462
+  zh: d7118dfe3b808807
+/deepseek-ai-dsh-experimental-worktree-console-bundle:
+  en: 266f14b41bc9af4c
+  zh: 05c16db70de68b5a
+/deepseek-ai-dsh-experimental-worktree-console-bundle/summary:
+  en: cde8a527c163c07c
+  zh: 00789ad6d0dc4796
+/deepseek-ai-dsh-experimental-worktree-console-bundle/table-of-contents:
+  en: 76368b6b1da79c80
+  zh: 434cf3c1f5db33cd
+/deepseek-ai-dsh-experimental-worktree-console-bundle/use-this-package:
+  en: d1c9bcd65efb9da8
+  zh: 059340f07d7c0751
+/deepseek-ai-dsh-experimental-worktree-console-bundle/understand-the-implementation:
+  en: 47fb0788c6083690
+  zh: a8b9c646b89c6857
+/deepseek-ai-dsh-experimental-worktree-console-bundle/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-worktree-console-bundle/model-experience/session-worktree-entry:
+  en: ecf639c9124dbe4b
+  zh: 21d2003c4ab50a5e
+/deepseek-ai-dsh-experimental-worktree-console-bundle/model-experience/session-worktree-entry/what-the-model-sees:
+  en: 1a20a239760d6bc2
+  zh: fa02d9859975588e
+/deepseek-ai-dsh-experimental-worktree-console-bundle/model-experience/session-worktree-entry/token-effect:
+  en: b983b11a7dc4ea52
+  zh: 7909b5d36708cc7b
+/deepseek-ai-dsh-experimental-worktree-console-bundle/model-experience/session-worktree-entry/kv-cache-effect:
+  en: 963f56cdce3aed14
+  zh: 8b1347206e7a0386
+/deepseek-ai-dsh-experimental-worktree-console-bundle/known-limitations-and-deferred-work:
+  en: 7b06b69d53f75db5
+  zh: 2219a7990e1f819f
+/deepseek-ai-dsh-experimental-worktree-console-bundle/known-limitations-and-deferred-work/dev-note:
+  en: 17c4c9030dceddf9
+  zh: 7375f98e931b2bea

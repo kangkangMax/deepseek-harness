@@ -1,0 +1,30 @@
+- heading "Worktrees" [level=3]
+- paragraph: Every Git worktree registered in your workspaces, whichever tool created it.
+- button "Refresh"
+- button "workspace 2 worktrees" [expanded]
+- button "Clean up stale entries"
+- table:
+  - rowgroup:
+    - row "Branch / directory Changes Source Actions":
+      - columnheader "Branch / directory"
+      - columnheader "Changes"
+      - columnheader "Source"
+      - columnheader "Actions"
+  - rowgroup:
+    - row "main primary {{cwd}}/workspace 1 ignored — Remove Primary worktree":
+      - cell "main primary {{cwd}}/workspace":
+        - button "main primary"
+        - paragraph: {{cwd}}/workspace
+      - cell "1 ignored"
+      - cell "—"
+      - cell "Remove Primary worktree":
+        - button "Remove" [disabled]
+        - text: Primary worktree
+    - row "retained-checkout {{cwd}}/workspace/.agents/worktrees/retained-checkout 1 ignored Official Remove":
+      - cell "retained-checkout {{cwd}}/workspace/.agents/worktrees/retained-checkout":
+        - button "retained-checkout"
+        - paragraph: {{cwd}}/workspace/.agents/worktrees/retained-checkout
+      - cell "1 ignored"
+      - cell "Official"
+      - cell "Remove":
+        - button "Remove"
