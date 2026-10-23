@@ -1,9 +1,10 @@
 .root {
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   gap: 5px;
   min-width: 28px;
-  max-width: min(280px, 30cqi);
+  max-width: min(160px, 30cqi);
   padding: 4px 6px;
   border: 0;
   border-radius: var(--dsw-radius-sm);

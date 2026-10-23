@@ -2,7 +2,7 @@
 - paragraph: Every Git worktree registered in your workspaces, whichever tool created it.
 - button "Refresh"
 - button "workspace 2 worktrees" [expanded]
-- button "Clean up"
+- button "Clean up stale entries"
 - table:
   - rowgroup:
     - row "Branch / directory Changes Source Actions":

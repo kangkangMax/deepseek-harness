@@ -133,6 +133,26 @@ it('restores the accepted base and exposes worktree details and deletion at narr
   await inventory.getByRole('button', { name: 'Remove', exact: true }).last().click()
   const confirmation = page.getByRole('dialog', { name: 'Remove this worktree?', exact: true })
   await confirmation.getByText('Associated sessions (1) will be archived and hidden from the session list. Chat history will be retained.', { exact: true }).waitFor()
+  for (const width of [1000, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    await page.emulateMedia({ colorScheme: width === 390 ? 'dark' : 'light' })
+    const geometry = await confirmation.evaluate((element) => {
+      const directory = element.querySelector('section[aria-label]')
+      const acknowledgement = element.querySelector('label')
+      const footer = element.querySelector('footer')
+      if (directory === null || acknowledgement === null || footer === null) throw new Error('Confirmation sections are missing')
+      return {
+        overflow: element.scrollWidth > element.clientWidth,
+        directoryBottom: directory.getBoundingClientRect().bottom,
+        acknowledgementTop: acknowledgement.getBoundingClientRect().top,
+        footerTop: footer.getBoundingClientRect().top,
+        acknowledgementBottom: acknowledgement.getBoundingClientRect().bottom,
+      }
+    })
+    expect(geometry.overflow).toBe(false)
+    expect(geometry.acknowledgementTop).toBeGreaterThan(geometry.directoryBottom)
+    expect(geometry.footerTop).toBeGreaterThan(geometry.acknowledgementBottom)
+  }
   await compareOrRefreshGolden(removalExpected, await captureStableAria(page, '[role="dialog"][aria-label="Remove this worktree?"]', scaffold.workspaceCwd), webSnapshotMode())
   await confirmation.getByRole('button', { name: 'Cancel', exact: true }).last().click()
   await confirmation.waitFor({ state: 'hidden' })
@@ -167,6 +187,7 @@ it('restores the accepted base and exposes worktree details and deletion at narr
   const branch = header.locator('[data-worktree-context]')
   await branch.waitFor()
   await header.getByText('Standard mode', { exact: true }).waitFor()
+  expect(await branch.evaluate(element => element.getBoundingClientRect().width)).toBeLessThanOrEqual(160)
   await compareOrRefreshGolden(headerExpected, await captureStableAria(page, '[data-conversation-header-corner] >> ..', scaffold.workspaceCwd), webSnapshotMode())
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
   await branch.hover()

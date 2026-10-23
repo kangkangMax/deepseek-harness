@@ -46,15 +46,15 @@ The card is searchable once the repository has more than six branches. Below tha
 
 The page owns one Settings navigation row, so it never competes with a plugin’s own configuration for space in a detail page.
 
-Each repository group independently expands or collapses its worktree table, starting expanded on page entry. The group retains its title, count, and independent cleanup action while collapsed. Refresh preserves the expansion state of retained groups. The Refresh button aligns vertically with the combined page title and description.
+Each repository group independently expands or collapses its worktree table, starting expanded on page entry. The group retains its title, count, and independent `Clean up stale entries` action while collapsed. Cleanup removes Git registrations whose checkout directories no longer exist; it does not delete existing directories. Refresh preserves the expansion state of retained groups. The Refresh button aligns vertically with the combined page title and description.
 
-The table gives the branch and secondary directory text the remaining width. Clicking a row outside its operation buttons opens compact details; Enter or Space on the row and activating its branch button do the same. The dialog shows the full branch name once, directory, source, ignored-file count, and commit, with `Copy path` and optional `Open directory` actions. Source is hidden from the table in narrow panels but remains available in the details.
+The table gives the branch and secondary directory text the remaining width. Clicking a row outside its operation buttons opens compact details; Enter or Space on the row and activating its branch button do the same. The dialog shows the full branch name once, directory, source, ignored-file count, and commit, with `Copy path` and optional `Open directory` actions. Source is hidden from the table in narrow panels but remains available in the details. Removal confirmation separates the directory, deletion impact, session-archive acknowledgement, and file-loss warning; its action footer wraps in narrow panels.
 
 Long branch names retain their beginning and end in the table. The details show the full branch name and path without truncation.
 
 Container queries stack row contents when the Settings panel narrows. Repository names and headings wrap. Read failures retain previously loaded rows and show an in-place error; operation results use the shell Toast.
 
-The Session header shows only the branch beside the mode. A single hover card shows the full branch name and checkout directory, with copy and optional desktop-open actions. Clicking or tapping the branch does not open a dialog or pin the card. Keyboard focus retains the shared card's preview behavior. The composer dock does not repeat the branch.
+The Session header shows only the branch beside the mode, truncating long names within a 160px control. A single hover card shows the full branch name and checkout directory, with copy and optional desktop-open actions. Clicking or tapping the branch does not open a dialog or pin the card. Keyboard focus retains the shared card's preview behavior. The composer dock does not repeat the branch.
 
 The Remote-facing functions live in their own module rather than inside the components. That keeps a browser spec able to run against a literal face instead of the generated Remote artifact, which only exists after a build.
 

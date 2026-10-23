@@ -1,12 +1,17 @@
 - dialog "Remove this worktree?":
-  - heading "Remove this worktree?" [level=2]
-  - button "Cancel"
-  - paragraph: {{cwd}}/workspace/.agents/worktrees/retained-checkout — The checkout directory is deleted and its registration dropped.
+  - banner:
+    - heading "Remove this worktree?" [level=2]
+    - button "Cancel"
+  - region "Working directory":
+    - heading "Working directory" [level=3]
+    - paragraph: {{cwd}}/workspace/.agents/worktrees/retained-checkout
+    - paragraph: The checkout directory is deleted and its registration dropped.
   - paragraph: Associated sessions (1) will be archived and hidden from the session list. Chat history will be retained.
   - checkbox "Also archive the associated sessions"
   - text: Also archive the associated sessions
   - paragraph: 1 ignored files will also be deleted.
   - checkbox "I know this worktree has changes that will be lost"
   - text: I know this worktree has changes that will be lost
-  - button "Cancel"
-  - button "Remove and discard changes" [disabled]
+  - contentinfo:
+    - button "Cancel"
+    - button "Remove and discard changes" [disabled]

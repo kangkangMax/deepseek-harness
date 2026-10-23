@@ -59,10 +59,7 @@ export const en = {
   refresh: 'Refresh',
   loading: 'Loading worktrees…',
 
-  // Short because it shares a row with the repository name, and a button long
-  // enough to wrap crowds that name out of the heading it belongs to. The full
-  // sentence is the button's title.
-  prune: 'Clean up',
+  prune: 'Clean up stale entries',
   pruneHint: 'Drop registrations whose checkout directory no longer exists.',
   pruneNone: 'Nothing was stale.',
   pruneDone: 'Cleared {count}.',
@@ -154,10 +151,7 @@ export const zh: typeof en = {
   refresh: '刷新',
   loading: '正在读取工作树…',
 
-  // Short because it shares a row with the repository name, and a button long
-  // enough to wrap crowds that name out of the heading it belongs to. The full
-  // sentence is the button's title.
-  prune: '清理',
+  prune: '清理失效记录',
   pruneHint: '移除检出目录已不存在的登记。',
   pruneNone: '没有失效登记。',
   pruneDone: '已清理 {count} 条。',

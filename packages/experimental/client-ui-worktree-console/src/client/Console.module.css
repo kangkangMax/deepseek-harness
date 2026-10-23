@@ -434,10 +434,66 @@
 
 .acknowledge {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 8px;
   margin-top: 4px;
-  color: var(--dsw-alias-label-secondary);
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  color: var(--dsw-alias-label-primary);
   font-size: 13px;
+  line-height: 20px;
   cursor: pointer;
+}
+
+.acknowledge input {
+  flex: none;
+  margin: 3px 0 0;
+}
+
+.removalBody {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0 16px 16px;
+}
+
+.removalSection,
+.removalRisk {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.removalLabel {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.removalRisk {
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary) 30%, transparent);
+  border-radius: var(--dsw-radius-sm);
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 6%, transparent);
+}
+
+.removalFooter {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.removalFooter > button {
+  max-width: 100%;
+  height: auto;
+  min-height: 32px;
+  white-space: normal;
+  text-align: center;
 }

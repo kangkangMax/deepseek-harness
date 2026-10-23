@@ -367,57 +367,69 @@ function Console(props: ConsoleProps) {
 
     {pending !== undefined && <Modal
       open
+      headless
+      className={clsx(css.detailsDialog)}
       onClose={() => { if (!busy) setPending(undefined) }}
       title={t('removeConfirm')}
-      closeLabel={t('removeCancel')}
-      footer={(
-        <>
-          <Button variant="outline" disabled={busy} onClick={() => { setPending(undefined) }}>
-            {t('removeCancel')}
-          </Button>
-          <Button
-            variant="primary"
-            disabled={busy || (atRisk && !acknowledged) || (pending.sessionIds.length > 0 && !sessionsAcknowledged)}
-            onClick={() => { void submitRemoval(pending, atRisk) }}
-          >
-            {t('removeConfirmAction')}
-          </Button>
-        </>
-      )}
     >
-      <p className={css.hint}>{pending.path} — {t('removeConfirmHint')}</p>
-      {pending.stale && <p className={css.hint}>{t('staleCardHint')}</p>}
-      {pending.sessionIds.length > 0 && <>
-        <p className={css.hint}>{t('removeSessionsHint', { count: pending.sessionIds.length })}</p>
-        <label className={css.acknowledge}>
-          <input
-            type="checkbox"
-            checked={sessionsAcknowledged}
-            disabled={busy}
-            onChange={(event) => { setSessionsAcknowledged(event.currentTarget.checked) }}
-          />
-          <span>{t('removeSessionsAcknowledge')}</span>
-        </label>
-      </>}
-      {pending.files.length > 0 && <>
-        <p className={css.hint}>{t('removeLostFiles')}</p>
-        <ul className={css.files}>
-          {pending.files.map(file => <li key={file}>{file}</li>)}
-        </ul>
-      </>}
-      {pending.ignoredCount > 0 && <p className={css.hint}>
-        {t('removeLostIgnored', { count: pending.ignoredCount })}
-      </p>}
-      {atRisk && <label className={css.acknowledge}>
-        <input
-          type="checkbox"
-          checked={acknowledged}
-          disabled={busy}
-          data-modal-autofocus
-          onChange={(event) => { setAcknowledged(event.currentTarget.checked) }}
-        />
-        <span>{t('removeAcknowledge')}</span>
-      </label>}
+      <header className={css.detailsHeader}>
+        <h2 className={css.detailsTitle}>{t('removeConfirm')}</h2>
+        <Button size="sm" variant="ghost" disabled={busy} aria-label={t('removeCancel')} onClick={() => { setPending(undefined) }}>
+          <IconCloseOutlineRegular size={14} />
+        </Button>
+      </header>
+      <div className={css.removalBody}>
+        <section className={css.removalSection} aria-label={t('directory')}>
+          <h3 className={css.removalLabel}>{t('directory')}</h3>
+          <p className={css.cardPath}>{pending.path}</p>
+          <p className={css.hint}>{t(pending.stale ? 'staleCardHint' : 'removeConfirmHint')}</p>
+        </section>
+        {pending.sessionIds.length > 0 && <section className={css.removalSection}>
+          <p className={css.hint}>{t('removeSessionsHint', { count: pending.sessionIds.length })}</p>
+          <label className={css.acknowledge}>
+            <input
+              type="checkbox"
+              checked={sessionsAcknowledged}
+              disabled={busy}
+              onChange={(event) => { setSessionsAcknowledged(event.currentTarget.checked) }}
+            />
+            <span>{t('removeSessionsAcknowledge')}</span>
+          </label>
+        </section>}
+        {atRisk && <section className={css.removalRisk}>
+          {pending.files.length > 0 && <>
+            <p className={css.hint}>{t('removeLostFiles')}</p>
+            <ul className={css.files}>
+              {pending.files.map(file => <li key={file}>{file}</li>)}
+            </ul>
+          </>}
+          {pending.ignoredCount > 0 && <p className={css.hint}>
+            {t('removeLostIgnored', { count: pending.ignoredCount })}
+          </p>}
+          <label className={css.acknowledge}>
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              disabled={busy}
+              data-modal-autofocus
+              onChange={(event) => { setAcknowledged(event.currentTarget.checked) }}
+            />
+            <span>{t('removeAcknowledge')}</span>
+          </label>
+        </section>}
+      </div>
+      <footer className={css.removalFooter}>
+        <Button variant="outline" disabled={busy} onClick={() => { setPending(undefined) }}>
+          {t('removeCancel')}
+        </Button>
+        <Button
+          variant="primary"
+          disabled={busy || (atRisk && !acknowledged) || (pending.sessionIds.length > 0 && !sessionsAcknowledged)}
+          onClick={() => { void submitRemoval(pending, atRisk) }}
+        >
+          {t('removeConfirmAction')}
+        </Button>
+      </footer>
     </Modal>}
   </section>
 }

@@ -73,6 +73,11 @@ describe('worktree management page', () => {
     const { removeWorktree } = renderSection({ worktrees: [row([], { sessionIds })] })
     fireEvent.click(await screen.findByText(en.remove))
     expect(await screen.findByText(en.removeSessionsHint.replace('{count}', '1'))).toBeTruthy()
+    const dialog = screen.getByRole('dialog', { name: en.removeConfirm })
+    const directory = within(dialog).getByRole('region', { name: en.directory })
+    expect(within(directory).getByText(WORKTREE).textContent).toBe(WORKTREE)
+    expect(within(directory).getByText(en.removeConfirmHint)).toBeTruthy()
+    expect(within(directory).queryByRole('checkbox')).toBeNull()
     const confirm = screen.getByRole('button', { name: en.removeConfirmAction }) as HTMLButtonElement
     expect(confirm.disabled).toBe(true)
     expect(removeWorktree).not.toHaveBeenCalled()
